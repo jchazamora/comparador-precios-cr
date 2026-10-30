@@ -1,0 +1,2 @@
+# Solo la app web; comparar_precios.py funciona sin dependencias externas.
+streamlit>=1.66

@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Configuración local del editor
+.claude/
+
+# Resultados generados por el script
+*.csv
