@@ -8,3 +8,6 @@ __pycache__/
 
 # Resultados generados por el script
 *.csv
+data_log.txt
+# ...salvo el catálogo que lee la app
+!data/comparacion.csv

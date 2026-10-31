@@ -4,7 +4,12 @@ Uso (requiere `pip install -r requirements.txt`):
     python -m unittest test_app -v
 """
 
+import csv
+import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 try:
@@ -36,19 +41,30 @@ def busqueda_falsa(terminos, maximo, avisar=None):
     }, []
 
 
-@unittest.skipIf(st is None, "Streamlit no está instalado")
-class TestApp(unittest.TestCase):
+class _BaseApp(unittest.TestCase):
     def setUp(self):
         st.cache_data.clear()
         parche = mock.patch("comparar_precios.buscar_en_tiendas", side_effect=busqueda_falsa)
         self.buscar = parche.start()
         self.addCleanup(parche.stop)
+        # Carpeta de datos propia del test; vacía = sin catálogo descargado.
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        self.datos = Path(carpeta.name)
+        parche_env = mock.patch.dict(os.environ, {"COMPARADOR_DATOS": carpeta.name})
+        parche_env.start()
+        self.addCleanup(parche_env.stop)
 
     def correr(self) -> "AppTest":
         at = AppTest.from_file("app.py", default_timeout=30)
         at.run()
         self.assertFalse(at.exception, at.exception)
         return at
+
+
+@unittest.skipIf(st is None, "Streamlit no está instalado")
+class TestAppEnVivo(_BaseApp):
+    """Sin catálogo descargado, la app arranca en modo de búsqueda en vivo."""
 
     def test_muestra_metricas(self):
         at = self.correr()
@@ -89,6 +105,58 @@ class TestApp(unittest.TestCase):
         at.text_input[0].input(" , ")
         at.button[0].click().run()
         self.assertIn("Escribe al menos un producto", at.info[0].value)
+
+
+@unittest.skipIf(st is None, "Streamlit no está instalado")
+class TestAppCatalogo(_BaseApp):
+    """Con data/comparacion.csv, la app lo lee sin consultar las tiendas."""
+
+    def setUp(self):
+        super().setUp()
+        por_tienda, _ = busqueda_falsa(None, None)
+        for productos in por_tienda.values():
+            for p in productos:
+                p.categoria = "Lácteos" if "Leche" in p.nombre else "Abarrotes"
+        filas = cp.comparar(por_tienda)
+        with open(self.datos / "comparacion.csv", "w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(filas[0]))
+            writer.writeheader()
+            writer.writerows(filas)
+        (self.datos / "meta.json").write_text(json.dumps({
+            "actualizado": "2026-10-30T18:00:00+00:00",
+            "productos_por_tienda": {"Walmart": 15000, "Masxmenos": 14000},
+        }), encoding="utf-8")
+
+    def test_no_consulta_las_tiendas(self):
+        at = self.correr()
+        self.buscar.assert_not_called()
+        self.assertEqual(at.radio[0].value, "Catálogo completo")
+        self.assertEqual(at.metric[0].value, "3")
+
+    def test_muestra_fecha_y_totales(self):
+        at = self.correr()
+        texto = " ".join(c.value for c in at.caption)
+        self.assertIn("30/10/2026", texto)
+        self.assertIn("Walmart: 15,000", texto)
+
+    def test_filtro_por_categoria(self):
+        at = self.correr()
+        at.multiselect[0].select("Abarrotes").run()
+        self.assertEqual(at.metric[0].value, "2")
+        self.assertEqual(set(at.dataframe[0].value["categoria"]), {"Abarrotes"})
+
+    def test_conserva_ceros_del_ean(self):
+        with open(self.datos / "comparacion.csv", encoding="utf-8") as fh:
+            contenido = fh.read().replace("\n1,", "\n0001,", 1)
+        (self.datos / "comparacion.csv").write_text(contenido, encoding="utf-8")
+        at = self.correr()
+        at.checkbox[0].uncheck().run()
+        self.assertIn("0001", at.dataframe[0].value["ean"].tolist())
+
+    def test_cambiar_a_busqueda_en_vivo(self):
+        at = self.correr()
+        at.radio[0].set_value("Búsqueda en vivo").run()
+        self.buscar.assert_called_with(("arroz", "frijoles", "leche"), 100)
 
 
 if __name__ == "__main__":

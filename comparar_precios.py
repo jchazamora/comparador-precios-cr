@@ -11,6 +11,7 @@ import json
 import re
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -22,8 +23,25 @@ TIENDAS = {
 
 # VTEX no devuelve más de 50 productos por página.
 TAMANO_PAGINA = 50
+# Ni deja paginar más allá de este índice; las categorías más grandes se parten en subcategorías.
+LIMITE_PAGINACION = 2500
 PAUSA_SEGUNDOS = 0.5
+# Las tiendas usan ₡9 999 999 como precio de relleno en productos sin precio real.
+PRECIO_MAXIMO_VALIDO = 9_000_000
+# Si una tienda cobra el doble o más por el mismo EAN, casi siempre es un error de datos
+# (una vende la unidad y otra el paquete); la app oculta esas filas por defecto.
+RAZON_SOSPECHOSA = 2
+REINTENTOS = 5
 USER_AGENT = "Mozilla/5.0 (comparador-precios-cr; proyecto de portafolio)"
+
+# IDs de categorías raíz de supermercado; son los mismos en ambas tiendas.
+# Se dejan fuera ropa, hogar, electrónica, juguetes, deportes y autos.
+CATEGORIAS_SUPERMERCADO = {
+    1: "Jugos y Bebidas", 2: "Cervezas, Vinos y Licores", 3: "Carnes, Embutidos y Mariscos",
+    6: "Higiene y Belleza", 8: "Bebés y Niños", 9: "Alimentos Congelados", 10: "Lácteos",
+    11: "Abarrotes", 13: "Limpieza", 14: "Farmacia", 15: "Frutas y Verduras",
+    16: "Panadería y tortillería", 21653: "Mascota",
+}
 
 # VTEX trae measurementUnit="un" en todo, así que el tamaño se saca del nombre.
 # Factor para llevar cada unidad a kg o L. "grea" aparece así en los datos ("500grea").
@@ -69,26 +87,46 @@ class Producto:
     precio_lista: float
     disponible: bool
     url: str
+    categoria: str = ""
 
     @property
     def en_oferta(self) -> bool:
         return self.precio_lista > self.precio
 
 
-def _pedir_pagina(base_url: str, termino: str, desde: int, hasta: int) -> list:
-    params = urllib.parse.urlencode({"ft": termino, "_from": desde, "_to": hasta})
-    url = f"{base_url}/api/catalog_system/pub/products/search?{params}"
+def _pedir_json(url: str) -> tuple[object, int | None]:
+    """Devuelve (JSON, total de resultados según la cabecera `resources`)."""
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"})
-    # VTEX responde 206 (Partial Content) cuando hay más páginas; urllib lo trata como éxito.
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        cuerpo = resp.read()
-        # Walmart comprime con gzip aunque no se pida; urllib no lo descomprime solo.
-        if resp.headers.get("Content-Encoding") == "gzip":
-            cuerpo = gzip.decompress(cuerpo)
-        return json.loads(cuerpo)
+    for intento in range(REINTENTOS):
+        try:
+            # VTEX responde 206 (Partial Content) cuando hay más páginas; urllib lo trata como éxito.
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                cuerpo = resp.read()
+                # Walmart comprime con gzip aunque no se pida; urllib no lo descomprime solo.
+                if resp.headers.get("Content-Encoding") == "gzip":
+                    cuerpo = gzip.decompress(cuerpo)
+                recursos = resp.headers.get("resources")  # p. ej. "0-49/197"
+                total = int(recursos.rsplit("/", 1)[1]) if recursos else None
+                return json.loads(cuerpo), total
+        except (urllib.error.URLError, TimeoutError) as e:
+            # Un 4xx (salvo 429) no se arregla reintentando.
+            permanente = isinstance(e, urllib.error.HTTPError) and e.code < 500 and e.code != 429
+            if permanente or intento == REINTENTOS - 1:
+                raise
+            # En descargas de cientos de páginas VTEX devuelve algún 500 suelto; se espera 1, 2, 4, 8 s.
+            time.sleep(2 ** intento)
 
 
-def _extraer_productos(tienda: str, datos: list) -> list[Producto]:
+def _pedir(base_url: str, params: dict, desde: int, hasta: int) -> tuple[list, int | None]:
+    query = urllib.parse.urlencode({**params, "_from": desde, "_to": hasta})
+    return _pedir_json(f"{base_url}/api/catalog_system/pub/products/search?{query}")
+
+
+def _pedir_pagina(base_url: str, termino: str, desde: int, hasta: int) -> list:
+    return _pedir(base_url, {"ft": termino}, desde, hasta)[0]
+
+
+def _extraer_productos(tienda: str, datos: list, categoria: str = "") -> list[Producto]:
     productos = []
     for p in datos:
         for item in p.get("items", []):
@@ -98,7 +136,7 @@ def _extraer_productos(tienda: str, datos: list) -> list[Producto]:
             oferta = sellers[0]["commertialOffer"]  # sic: VTEX lo escribe así
             precio = float(oferta.get("Price") or 0)
             # VTEX pone Price=0 en productos sin stock; no sirven para comparar.
-            if precio <= 0:
+            if precio <= 0 or precio >= PRECIO_MAXIMO_VALIDO:
                 continue
             productos.append(Producto(
                 tienda=tienda,
@@ -109,6 +147,7 @@ def _extraer_productos(tienda: str, datos: list) -> list[Producto]:
                 precio_lista=float(oferta.get("ListPrice") or precio),
                 disponible=oferta.get("AvailableQuantity", 0) > 0,
                 url=p.get("link", ""),
+                categoria=categoria,
             ))
     return productos
 
@@ -143,6 +182,54 @@ def buscar_en_tiendas(terminos, maximo: int, avisar=None) -> tuple[dict[str, lis
     return por_tienda, errores
 
 
+def _descargar_categoria(tienda: str, nodo: dict, ruta: str, raiz: str, avisar) -> list[Producto]:
+    """Descarga una categoría; si pasa del límite de paginación, baja por sus subcategorías."""
+    base_url = TIENDAS[tienda]
+    params = {"fq": f"C:{ruta}"}
+    _, total = _pedir(base_url, params, 0, 0)
+    total = total or 0
+
+    if total > LIMITE_PAGINACION and nodo.get("children"):
+        productos = []
+        for hijo in nodo["children"]:
+            productos += _descargar_categoria(tienda, hijo, f"{ruta}{hijo['id']}/", raiz, avisar)
+        return productos
+    if total > LIMITE_PAGINACION:
+        avisar(f"[{tienda}] {nodo['name']}: {total} productos, solo se pueden bajar {LIMITE_PAGINACION}")
+
+    productos = []
+    for desde in range(0, min(total, LIMITE_PAGINACION), TAMANO_PAGINA):
+        try:
+            datos, _ = _pedir(base_url, params, desde, desde + TAMANO_PAGINA - 1)
+        except Exception as e:  # una página perdida no debe tirar una descarga de varios minutos
+            avisar(f"[{tienda}] {raiz}: se saltó la página {desde}-{desde + TAMANO_PAGINA - 1} ({e})")
+            continue
+        productos.extend(_extraer_productos(tienda, datos, categoria=raiz))
+        time.sleep(PAUSA_SEGUNDOS)
+    return productos
+
+
+def descargar_catalogo(tienda: str, categorias=CATEGORIAS_SUPERMERCADO, avisar=lambda _: None) -> list[Producto]:
+    """Descarga todos los productos de las categorías indicadas, sin repetir EAN."""
+    arbol, _ = _pedir_json(f"{TIENDAS[tienda]}/api/catalog_system/pub/category/tree/3")
+    vistos, productos = set(), []
+    for nodo in arbol:
+        if nodo["id"] not in categorias:
+            continue
+        nombre = categorias[nodo["id"]]
+        try:
+            descargados = _descargar_categoria(tienda, nodo, f"/{nodo['id']}/", nombre, avisar)
+        except Exception as e:
+            avisar(f"[{tienda}] {nombre}: se saltó la categoría ({e})")
+            continue
+        # Un producto puede estar en varias categorías; se queda en la primera.
+        nuevos = [p for p in descargados if p.ean not in vistos]
+        vistos.update(p.ean for p in nuevos)
+        productos += nuevos
+        avisar(f"[{tienda}] {nombre}: {len(nuevos)} productos")
+    return productos
+
+
 def comparar(por_tienda: dict[str, list[Producto]]) -> list[dict]:
     """Cruza productos por EAN y devuelve los que están en todas las tiendas."""
     indices = {
@@ -162,7 +249,8 @@ def comparar(por_tienda: dict[str, list[Producto]]) -> list[dict]:
         tamano = next(filter(None, (extraer_tamano(p.nombre) for p in ofertas.values())), None)
         cantidad, unidad = tamano or (None, "")
 
-        fila = {"ean": ean, "nombre": next(iter(ofertas.values())).nombre}
+        primera = next(iter(ofertas.values()))
+        fila = {"ean": ean, "nombre": primera.nombre, "categoria": primera.categoria}
         for t, p in ofertas.items():
             clave = t.lower()
             fila[f"precio_{clave}"] = p.precio
@@ -180,6 +268,7 @@ def comparar(por_tienda: dict[str, list[Producto]]) -> list[dict]:
         fila["diferencia_pct"] = round(100 * diferencia / max(precios.values()), 1)
         # Diferencia sin ofertas: separa promociones temporales de diferencias de fondo.
         fila["diferencia_lista"] = max(precios_lista.values()) - min(precios_lista.values())
+        fila["sospechoso"] = max(precios.values()) >= RAZON_SOSPECHOSA * min(precios.values())
         for t, p in ofertas.items():
             fila[f"url_{t.lower()}"] = p.url
         filas.append(fila)

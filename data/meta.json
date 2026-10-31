@@ -1,0 +1,24 @@
+{
+  "actualizado": "2026-10-30T20:06:28+00:00",
+  "productos_por_tienda": {
+    "Walmart": 16902,
+    "Masxmenos": 14404
+  },
+  "productos_en_comun": 13211,
+  "categorias": [
+    "Abarrotes",
+    "Alimentos Congelados",
+    "Bebés y Niños",
+    "Carnes, Embutidos y Mariscos",
+    "Cervezas, Vinos y Licores",
+    "Farmacia",
+    "Frutas y Verduras",
+    "Higiene y Belleza",
+    "Jugos y Bebidas",
+    "Limpieza",
+    "Lácteos",
+    "Mascota",
+    "Panadería y tortillería"
+  ],
+  "saltados": []
+}

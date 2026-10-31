@@ -7,6 +7,7 @@ Uso:
 import gzip
 import json
 import unittest
+import urllib.error
 from unittest import mock
 
 import comparar_precios as cp
@@ -94,6 +95,10 @@ class TestExtraerProductos(unittest.TestCase):
         datos = [producto_vtex("Agotado", "1", 0, stock=0), producto_vtex("Normal", "2", 500)]
         self.assertEqual([p.ean for p in cp._extraer_productos("Walmart", datos)], ["2"])
 
+    def test_descarta_precio_de_relleno(self):
+        datos = [producto_vtex("Jabón", "1", 9999999.0), producto_vtex("Normal", "2", 500)]
+        self.assertEqual([p.ean for p in cp._extraer_productos("Walmart", datos)], ["2"])
+
     def test_sin_sellers_o_sin_items(self):
         sin_sellers = producto_vtex("X", "1", 500)
         sin_sellers["items"][0]["sellers"] = []
@@ -136,6 +141,13 @@ class TestComparar(unittest.TestCase):
         self.assertEqual(f["mas_barata"], "Walmart")
         self.assertEqual(f["diferencia"], 250)
         self.assertEqual(f["diferencia_pct"], 25.0)
+
+    def test_marca_diferencias_sospechosas(self):
+        filas = cp.comparar({
+            "Walmart": [producto("Walmart", "1", 690), producto("Walmart", "2", 1000)],
+            "Masxmenos": [producto("Masxmenos", "1", 3520), producto("Masxmenos", "2", 1900)],
+        })
+        self.assertEqual({f["ean"]: f["sospechoso"] for f in filas}, {"1": True, "2": False})
 
     def test_precios_iguales(self):
         [f] = cp.comparar({
@@ -268,6 +280,85 @@ class TestBuscarEnTiendas(unittest.TestCase):
         self.assertEqual(mensajes, ["[Walmart] 'arroz': 0 productos", "[Masxmenos] 'arroz': 0 productos"])
 
 
+@mock.patch("comparar_precios.time.sleep")
+class TestDescargarCatalogo(unittest.TestCase):
+    ARBOL = [
+        {"id": 1, "name": "Bebidas", "children": []},
+        {"id": 7, "name": "Hogar", "children": []},
+        {"id": 11, "name": "Abarrotes", "children": [
+            {"id": 100, "name": "Arroz", "children": []},
+            {"id": 101, "name": "Frijoles", "children": []},
+        ]},
+    ]
+
+    def _api_falsa(self, totales, eans=None):
+        """Simula `_pedir`: cada categoría (fq) tiene un total y devuelve productos por página."""
+        eans = eans or {}
+
+        def pedir(base_url, params, desde, hasta):
+            fq = params["fq"]
+            total = totales[fq]
+            if hasta == 0:
+                return [], total
+            cantidad = max(0, min(hasta + 1, total) - desde)
+            codigos = eans.get(fq, [f"{fq}{i}" for i in range(total)])
+            return [producto_vtex("P", codigos[desde + i], 100) for i in range(cantidad)], total
+        return pedir
+
+    def _descargar(self, totales, categorias, eans=None):
+        avisos = []
+        with mock.patch("comparar_precios._pedir_json", return_value=(self.ARBOL, None)), \
+             mock.patch("comparar_precios._pedir", side_effect=self._api_falsa(totales, eans)) as pedir:
+            productos = cp.descargar_catalogo("Walmart", categorias, avisar=avisos.append)
+        return productos, pedir, avisos
+
+    def test_solo_las_categorias_pedidas(self, _sleep):
+        productos, pedir, _ = self._descargar({"C:/1/": 30}, {1: "Bebidas"})
+        self.assertEqual(len(productos), 30)
+        self.assertEqual({p.categoria for p in productos}, {"Bebidas"})
+        self.assertNotIn("C:/7/", {c.args[1]["fq"] for c in pedir.call_args_list})
+
+    def test_categoria_grande_se_parte_en_subcategorias(self, _sleep):
+        totales = {"C:/11/": 3000, "C:/11/100/": 60, "C:/11/101/": 20}
+        productos, pedir, _ = self._descargar(totales, {11: "Abarrotes"})
+        self.assertEqual(len(productos), 80)
+        # Toman el nombre de la categoría raíz, no el de la subcategoría.
+        self.assertEqual({p.categoria for p in productos}, {"Abarrotes"})
+        paginas_raiz = [c for c in pedir.call_args_list if c.args[1]["fq"] == "C:/11/" and c.args[3] > 0]
+        self.assertEqual(paginas_raiz, [])
+
+    def test_pagina_en_bloques_de_50(self, _sleep):
+        _, pedir, _ = self._descargar({"C:/1/": 120}, {1: "Bebidas"})
+        rangos = [c.args[2:] for c in pedir.call_args_list if c.args[3] > 0]
+        self.assertEqual(rangos, [(0, 49), (50, 99), (100, 149)])
+
+    def test_sin_subcategorias_se_corta_en_el_limite(self, _sleep):
+        productos, _, avisos = self._descargar({"C:/1/": 2600}, {1: "Bebidas"})
+        self.assertEqual(len(productos), cp.LIMITE_PAGINACION)
+        self.assertTrue(any("solo se pueden bajar 2500" in a for a in avisos))
+
+    def test_salta_paginas_que_fallan(self, _sleep):
+        api = self._api_falsa({"C:/1/": 120})
+
+        def pedir(base_url, params, desde, hasta):
+            if desde == 50:
+                raise TimeoutError("sin respuesta")
+            return api(base_url, params, desde, hasta)
+
+        avisos = []
+        with mock.patch("comparar_precios._pedir_json", return_value=(self.ARBOL, None)), \
+             mock.patch("comparar_precios._pedir", side_effect=pedir):
+            productos = cp.descargar_catalogo("Walmart", {1: "Bebidas"}, avisar=avisos.append)
+        self.assertEqual(len(productos), 70)
+        self.assertTrue(any("se saltó la página 50-99" in a for a in avisos))
+
+    def test_no_repite_productos_entre_categorias(self, _sleep):
+        eans = {"C:/1/": ["A", "B"], "C:/11/": ["B", "C"]}
+        productos, _, _ = self._descargar({"C:/1/": 2, "C:/11/": 2}, {1: "Bebidas", 11: "Abarrotes"}, eans)
+        self.assertEqual([(p.ean, p.categoria) for p in productos],
+                         [("A", "Bebidas"), ("B", "Bebidas"), ("C", "Abarrotes")])
+
+
 class TestPedirPagina(unittest.TestCase):
     def _respuesta(self, cuerpo: bytes, encoding=None):
         resp = mock.MagicMock()
@@ -286,6 +377,35 @@ class TestPedirPagina(unittest.TestCase):
         datos = [producto_vtex("Arroz", "1", 100)]
         with mock.patch("urllib.request.urlopen", return_value=self._respuesta(json.dumps(datos).encode())):
             self.assertEqual(cp._pedir_pagina("https://x.cr", "arroz", 0, 49), datos)
+
+    def test_lee_el_total_de_la_cabecera_resources(self):
+        resp = self._respuesta(b"[]")
+        resp.headers = {"resources": "0-49/197"}
+        with mock.patch("urllib.request.urlopen", return_value=resp):
+            self.assertEqual(cp._pedir_json("https://x.cr/api"), ([], 197))
+
+    @mock.patch("comparar_precios.time.sleep")
+    def test_reintenta_errores_de_red(self, sleep):
+        fallo = urllib.error.URLError("conexión reiniciada")
+        with mock.patch("urllib.request.urlopen", side_effect=[fallo, TimeoutError(), self._respuesta(b"[1]")]):
+            self.assertEqual(cp._pedir_json("https://x.cr/api"), ([1], None))
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [1, 2])
+
+    @mock.patch("comparar_precios.time.sleep")
+    def test_se_rinde_despues_de_varios_intentos(self, _sleep):
+        fallo = urllib.error.HTTPError("https://x.cr/api", 500, "Internal Server Error", {}, None)
+        with mock.patch("urllib.request.urlopen", side_effect=[fallo] * cp.REINTENTOS) as urlopen:
+            with self.assertRaises(urllib.error.HTTPError):
+                cp._pedir_json("https://x.cr/api")
+        self.assertEqual(urlopen.call_count, cp.REINTENTOS)
+
+    @mock.patch("comparar_precios.time.sleep")
+    def test_no_reintenta_errores_permanentes(self, _sleep):
+        fallo = urllib.error.HTTPError("https://x.cr/api", 404, "Not Found", {}, None)
+        with mock.patch("urllib.request.urlopen", side_effect=[fallo]) as urlopen:
+            with self.assertRaises(urllib.error.HTTPError):
+                cp._pedir_json("https://x.cr/api")
+        self.assertEqual(urlopen.call_count, 1)
 
     def test_arma_la_url_con_parametros_codificados(self):
         with mock.patch("urllib.request.urlopen", return_value=self._respuesta(b"[]")) as urlopen:
