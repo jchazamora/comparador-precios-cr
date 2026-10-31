@@ -1,9 +1,40 @@
 [client]
-# La app es un comparador, no una fuente de datos: se oculta la descarga CSV
-# y la copia de las tablas. No impide ver los datos con las herramientas del navegador.
+# Es un comparador, no una fuente de datos: sin descarga ni copia de las tablas.
 disableDataExport = true
-# Sin menú de desarrollador (rerun, limpiar caché) para los visitantes.
 toolbarMode = "viewer"
 
 [browser]
 gatherUsageStats = false
+
+# Colores en sintonía con estilo.py (PALETA).
+[theme]
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+baseRadius = "0.75rem"
+buttonRadius = "0.75rem"
+showWidgetBorder = true
+
+[theme.light]
+primaryColor = "#6a4cff"
+backgroundColor = "#f6f7fb"
+secondaryBackgroundColor = "#eef0f7"
+textColor = "#171a2b"
+borderColor = "#e6e8f0"
+dataframeBorderColor = "#e6e8f0"
+
+[theme.light.sidebar]
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f3f4fa"
+
+[theme.dark]
+primaryColor = "#9b87ff"
+backgroundColor = "#0d0f1a"
+secondaryBackgroundColor = "#1b1e33"
+textColor = "#eceef8"
+borderColor = "#262a42"
+dataframeBorderColor = "#262a42"
+
+[theme.dark.sidebar]
+backgroundColor = "#111426"
+secondaryBackgroundColor = "#1b1e33"

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9b87ff"/><stop offset="1" stop-color="#3987e5"/></linearGradient></defs>
+<rect x="0" y="0" width="64" height="64" rx="18" fill="url(#g)"/>
+<path d="M15 19h6l5 22h20l4-15H24" fill="none" stroke="#fff" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="29" cy="48" r="3.6" fill="#fff"/><circle cx="43" cy="48" r="3.6" fill="#fff"/>
+<text x="78" y="31" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="25" font-weight="800" fill="#eceef8" letter-spacing="-0.5">Comparador CR</text>
+<text x="79" y="53" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="15" font-weight="500" fill="#9aa0bf">Precios de supermercado</text></svg>

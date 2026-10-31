@@ -39,7 +39,32 @@ En ambos modos se muestra:
 
 - **Métricas**: cuántos productos se comparan (están en al menos dos de las tiendas elegidas) y en cuál sale más barato cada uno.
 - **Gráfico**: los 15 productos con mayor diferencia porcentual, del color de la tienda más barata.
+- **Tarjetas de ahorro**: los productos donde más se ahorra, con enlace a la tienda más barata.
 - **Tabla**: precios, ofertas, precio por kg/L y enlaces a cada tienda. La app es un comparador, no una fuente de datos, así que la descarga y la copia de las tablas están desactivadas (`client.disableDataExport` en [`.streamlit/config.toml`](.streamlit/config.toml)).
+
+### Cuentas, favoritos, lista de compras e historial
+
+Con una base PostgreSQL configurada, la app tiene registro e inicio de sesión con correo y contraseña, y cada usuario puede:
+
+- **Guardar favoritos**: marca productos en la tabla del comparador y ve sus precios de hoy juntos.
+- **Armar una lista de compras**: suma la lista en cada tienda, avisa qué productos le faltan a cada una y calcula cuánto se ahorra comprando cada producto donde es más barato.
+- **Ver el historial de precios**: cómo cambió el precio de un producto en cada tienda entre actualizaciones del catálogo.
+
+Para desarrollo, [`docker-compose.yml`](docker-compose.yml) levanta un PostgreSQL local que solo acepta conexiones desde la misma máquina:
+
+```bash
+docker compose up -d
+copy .env.example .env           # en macOS/Linux: cp .env.example .env
+```
+
+En producción se usa una base en la nube, por ejemplo [Neon](https://neon.tech) (plan gratis): se crea el proyecto, se copia su *connection string* y se pone como `DATABASE_URL` en `.env` (local) o en los *secrets* de Streamlit Community Cloud. Las tablas se crean solas la primera vez que se guarda una corrida. Sin `DATABASE_URL`, el comparador funciona igual y las páginas de cuenta avisan que falta configurar la base.
+
+Seguridad de las cuentas:
+
+- Las contraseñas se guardan con bcrypt, nunca en texto, y los formularios usan `autocomplete` para que funcionen los gestores de contraseñas.
+- Tras 5 inicios de sesión fallidos con un mismo correo en 15 minutos, ese correo queda bloqueado 15 minutos. Los intentos se cuentan en la base, así que recargar la página no reinicia la cuenta, y también se cuentan para correos sin cuenta, para que el bloqueo no revele cuáles existen.
+- Cada usuario puede eliminar su cuenta desde «Mi cuenta»: se borran también sus favoritos, su lista y sus intentos fallidos. El formulario de registro explica qué datos se guardan.
+- Si la base no responde, la app muestra un aviso en vez del error técnico.
 
 ### Actualizar el catálogo
 
@@ -50,6 +75,8 @@ python actualizar_catalogo.py
 ```
 
 Recorre las categorías de supermercado de las cuatro tiendas (abarrotes, lácteos, bebidas, limpieza, farmacia, etc.) y guarda `data/comparacion.csv` y `data/meta.json`. Deja fuera ropa, hogar, electrónica, juguetes, deportes y autos. Cada tienda se descarga en su propio hilo, con pausas para no saturar los sitios. La descarga cruda queda en `cache/` (fuera de git), y `--usar-cache` recalcula la comparación sin volver a descargar. Con `--sin-automercado` no necesita Playwright y tarda unos 13 minutos; `--sin-pequenomundo` deja fuera Pequeño Mundo.
+
+Si hay `DATABASE_URL`, cada corrida se guarda además en PostgreSQL para el historial (`--sin-db` lo evita). La fecha de cada corrida es la de la descarga: recalcular con `--usar-cache` no crea otra foto, sino que reconoce la que ya está guardada. Para no llenar la base, un precio solo se guarda cuando cambia: cada fila de `precios` dice desde qué corrida y hasta cuál se vio ese precio, así que una corrida con los mismos precios solo alarga los tramos.
 
 La última corrida tardó 32 minutos (Automercado es lo más lento; Pequeño Mundo, unos 4) y bajó 16 814 productos de Walmart, 14 348 de Masxmenos, 14 315 de Automercado y 1 292 de Pequeño Mundo. Se compararon 13 328 productos, 1 236 de ellos en tres o más tiendas. De Automercado se cruzaron 1 407 productos por nombre: en una revisión manual de 40 al azar, 38 eran el mismo producto. De Pequeño Mundo se cruzaron 20, revisados uno por uno: la mayoría de su surtido son marcas o tamaños que las otras tiendas no venden.
 
@@ -73,11 +100,12 @@ python comparar_precios.py arroz frijoles leche --max 100 --csv precios.csv
 python -m unittest -v
 ```
 
-Ningún test hace peticiones reales ni abre un navegador: la API de VTEX se simula con `unittest.mock`, así que no dependen de la red ni de los precios del día.
+Ningún test hace peticiones reales ni abre un navegador: la API de VTEX se simula con `unittest.mock`, así que no dependen de la red ni de los precios del día. Los tests de la base usan `TEST_DATABASE_URL` (el PostgreSQL de `docker compose`, ver [`.env.example`](.env.example)) y nunca `DATABASE_URL`, para no correr contra la base de producción. Cada uno trabaja en un esquema temporal dentro de una transacción que se deshace al terminar, y sin esa variable se saltan.
 
 - [`test_comparar_precios.py`](test_comparar_precios.py) tiene 45 tests de la lógica. No necesita dependencias externas.
 - [`test_automercado.py`](test_automercado.py) tiene 22 tests de la lectura de tarjetas de Automercado, del cruce por nombre (casos que deben cruzar y casos ambiguos o contradictorios que no: "deslactosada", "sin azúcar", la edad de un licor, paquetes de distinto número de unidades) y de la comparación con tres tiendas.
 - [`test_pequenomundo.py`](test_pequenomundo.py) tiene 9 tests de la lectura de las páginas de Pequeño Mundo: precios, ofertas, agotados, paquetes (`600ml 12unds` → `12 x 600ml`, `120g 2pcs`), paginación, productos repetidos entre categorías y páginas caídas.
+- [`test_db.py`](test_db.py) tiene 24 tests del historial (tramos que se alargan, se abren o dejan huecos; una sola corrida por fecha; volver al mismo precio no cuenta como cambio), del registro e inicio de sesión (contraseña cifrada, correo repetido, mayúsculas en el correo, límites de longitud, bloqueo tras varios fallos), de la búsqueda (`%` y `_` como texto), de favoritos, de la lista de compras y de la eliminación de la cuenta.
 - [`test_app.py`](test_app.py) tiene 15 tests de la app con `streamlit.testing.v1.AppTest`: los dos modos de datos, métricas con dos, tres y cuatro tiendas, nombres de tienda con tilde, el selector de tiendas, filtros y el formulario de búsqueda. Usan una carpeta de datos temporal (variable `COMPARADOR_DATOS`) y, si Streamlit no está instalado, se saltan.
 
 La lógica cubre:
@@ -165,11 +193,13 @@ Pequeño Mundo usa **Magento**, y sus páginas de categoría traen el nombre y e
 - Los términos de uso de Pequeño Mundo (sección 17) reservan sus contenidos y bases de datos y prohíben reproducirlos o exhibirlos sin permiso escrito.
 - El tamaño depende de cómo esté escrito el nombre. Si el formato es raro, el precio por kg/L queda vacío.
 - Los precios son los de la tienda en línea y pueden no coincidir con los de la tienda física.
-- No guarda historial: cada corrida es una foto del momento. El catálogo de la app tiene la fecha de su última actualización.
+- El historial empieza con la primera corrida guardada en PostgreSQL: los gráficos se llenan a medida que se actualiza el catálogo.
+- La sesión vive en la pestaña del navegador: al recargar la página hay que volver a iniciar sesión.
+- No se verifica el correo al registrarse, y el formulario de registro avisa si un correo ya tiene cuenta (para que la persona sepa que debe iniciar sesión).
+- El bloqueo tras varios intentos es por correo: alguien que conozca tu correo podría bloquear tu inicio de sesión durante 15 minutos.
 
 ## Posibles mejoras
 
 - Agregar más cadenas que usen VTEX o tengan otra API pública y cuyos términos lo permitan.
-- Guardar cada corrida en SQLite para ver cómo cambian los precios en el tiempo.
 - Actualizar el catálogo automáticamente cada día con GitHub Actions.
 - Publicar la app en Streamlit Community Cloud.

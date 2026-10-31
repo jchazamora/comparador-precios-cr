@@ -16,3 +16,6 @@ probar_am.py
 data_log.txt
 # ...salvo el catálogo que lee la app
 !data/comparacion.csv
+
+.env
+.streamlit/secrets.toml

@@ -1,2 +1,7 @@
 # Solo la app web; comparar_precios.py funciona sin dependencias externas.
 streamlit>=1.66
+# Cuentas, favoritos, lista de compras e historial (PostgreSQL).
+psycopg[binary]>=3.2
+psycopg-pool>=3.2
+bcrypt>=4.2
+python-dotenv>=1.0

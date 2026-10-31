@@ -41,6 +41,11 @@ def busqueda_falsa(terminos, maximo, avisar=None):
     }, []
 
 
+def conteos(at) -> dict:
+    """Métricas de conteo (sin la diferencia promedio, que depende de los precios de ejemplo)."""
+    return {m.label: m.value for m in at.metric if m.label != "Diferencia promedio"}
+
+
 class _BaseApp(unittest.TestCase):
     def setUp(self):
         st.cache_data.clear()
@@ -68,7 +73,7 @@ class TestAppEnVivo(_BaseApp):
 
     def test_muestra_metricas(self):
         at = self.correr()
-        metricas = {m.label: m.value for m in at.metric}
+        metricas = conteos(at)
         self.assertEqual(metricas, {
             "Productos comparados": "3",
             "Walmart más barato": "2",
@@ -182,7 +187,7 @@ class TestAppTresTiendas(_BaseApp):
             writer.writerows(filas)
 
     def metricas(self, at):
-        return {m.label: m.value for m in at.metric}
+        return conteos(at)
 
     def test_metricas_de_las_tres_tiendas(self):
         at = self.correr()
@@ -211,7 +216,8 @@ class TestAppTresTiendas(_BaseApp):
         tabla = at.dataframe[0].value.set_index("ean")
         self.assertEqual(tabla.loc["1", "cruce_por_nombre"], "Automercado")
         self.assertEqual(tabla.loc["2", "cruce_por_nombre"], "")
-        self.assertTrue(any("no publican códigos de barras" in c.value for c in at.caption))
+        # El aviso sobre el cruce por nombre se quitó; la columna basta.
+        self.assertFalse(any("códigos de barras" in c.value for c in at.caption))
 
 
 @unittest.skipIf(st is None, "Streamlit no está instalado")

@@ -1,0 +1,17 @@
+# PostgreSQL para desarrollo y tests. En producción se usa una base en la nube (DATABASE_URL en .env).
+#   docker compose up -d
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: comparador
+      POSTGRES_PASSWORD: comparador_local
+      POSTGRES_DB: comparador
+    ports:
+      # Solo desde esta máquina (la clave es de ejemplo). 5433 para no chocar con un PostgreSQL instalado.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - datos:/var/lib/postgresql/data
+
+volumes:
+  datos:
