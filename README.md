@@ -1,6 +1,6 @@
 # Comparador de precios de supermercados de Costa Rica
 
-Compara los precios de **Walmart**, **Masxmenos** y **Automercado**: descarga su catálogo de supermercado, cruza los productos que son el mismo artículo y muestra cuál tienda lo vende más barato. Se puede usar como **app web en Streamlit** (métricas, gráfico de mayores diferencias, tabla filtrable por categoría con enlaces a cada tienda) o como script de consola que genera un CSV listo para Excel.
+Compara los precios de **Walmart**, **Masxmenos**, **Automercado** y **Pequeño Mundo**: descarga su catálogo de supermercado, cruza los productos que son el mismo artículo y muestra cuál tienda lo vende más barato. Se puede usar como **app web en Streamlit** (métricas, gráfico de mayores diferencias, tabla filtrable por categoría con enlaces a cada tienda) o como script de consola que genera un CSV listo para Excel.
 
 ```
 Producto                                          Walmart   Masxmenos     Dif.  Más barata
@@ -33,7 +33,7 @@ streamlit run app.py
 Se abre en `http://localhost:8501`. Tiene dos modos de datos:
 
 - **Catálogo completo** (por defecto): lee `data/comparacion.csv`, así que carga al instante. Se eligen las tiendas a comparar y se filtra por categoría, por nombre, por productos con precio distinto, por diferencias que no se deben solo a una oferta y por diferencias sospechosas.
-- **Búsqueda en vivo**: se escriben productos separados por coma y se consultan Walmart y Masxmenos en ese momento. Los resultados se guardan en caché durante una hora. Automercado no está en este modo porque se lee con un navegador automático, que tarda demasiado para una consulta en vivo.
+- **Búsqueda en vivo**: se escriben productos separados por coma y se consultan Walmart y Masxmenos en ese momento. Los resultados se guardan en caché durante una hora. Automercado y Pequeño Mundo no están en este modo: no tienen una API de búsqueda y sus productos se cruzan por nombre contra el catálogo completo.
 
 En ambos modos se muestra:
 
@@ -49,9 +49,9 @@ playwright install chromium
 python actualizar_catalogo.py
 ```
 
-Recorre las categorías de supermercado de las tres tiendas (abarrotes, lácteos, bebidas, limpieza, farmacia, etc.) y guarda `data/comparacion.csv` y `data/meta.json`. Deja fuera ropa, hogar, electrónica, juguetes, deportes y autos. Cada tienda se descarga en su propio hilo, con pausas para no saturar los sitios. La descarga cruda queda en `cache/` (fuera de git), y `--usar-cache` recalcula la comparación sin volver a descargar. Con `--sin-automercado` solo usa las tiendas VTEX, no necesita Playwright y tarda unos 13 minutos.
+Recorre las categorías de supermercado de las cuatro tiendas (abarrotes, lácteos, bebidas, limpieza, farmacia, etc.) y guarda `data/comparacion.csv` y `data/meta.json`. Deja fuera ropa, hogar, electrónica, juguetes, deportes y autos. Cada tienda se descarga en su propio hilo, con pausas para no saturar los sitios. La descarga cruda queda en `cache/` (fuera de git), y `--usar-cache` recalcula la comparación sin volver a descargar. Con `--sin-automercado` no necesita Playwright y tarda unos 13 minutos; `--sin-pequenomundo` deja fuera Pequeño Mundo.
 
-La última corrida tardó 32 minutos (Automercado es lo más lento) y bajó 16 814 productos de Walmart, 14 348 de Masxmenos y 14 315 de Automercado. Se compararon 13 324 productos, 1 222 de ellos en las tres tiendas. De Automercado se cruzaron 1 407 productos por nombre: en una revisión manual de 40 al azar, 38 eran el mismo producto.
+La última corrida tardó 32 minutos (Automercado es lo más lento; Pequeño Mundo, unos 4) y bajó 16 814 productos de Walmart, 14 348 de Masxmenos, 14 315 de Automercado y 1 292 de Pequeño Mundo. Se compararon 13 328 productos, 1 236 de ellos en tres o más tiendas. De Automercado se cruzaron 1 407 productos por nombre: en una revisión manual de 40 al azar, 38 eran el mismo producto. De Pequeño Mundo se cruzaron 20, revisados uno por uno: la mayoría de su surtido son marcas o tamaños que las otras tiendas no venden.
 
 ### Consola
 
@@ -76,8 +76,9 @@ python -m unittest -v
 Ningún test hace peticiones reales ni abre un navegador: la API de VTEX se simula con `unittest.mock`, así que no dependen de la red ni de los precios del día.
 
 - [`test_comparar_precios.py`](test_comparar_precios.py) tiene 45 tests de la lógica. No necesita dependencias externas.
-- [`test_automercado.py`](test_automercado.py) tiene 21 tests de la lectura de tarjetas de Automercado, del cruce por nombre (casos que deben cruzar y casos ambiguos o contradictorios que no: "deslactosada", "sin azúcar", la edad de un licor) y de la comparación con tres tiendas.
-- [`test_app.py`](test_app.py) tiene 14 tests de la app con `streamlit.testing.v1.AppTest`: los dos modos de datos, métricas con dos y tres tiendas, el selector de tiendas, filtros y el formulario de búsqueda. Usan una carpeta de datos temporal (variable `COMPARADOR_DATOS`) y, si Streamlit no está instalado, se saltan.
+- [`test_automercado.py`](test_automercado.py) tiene 22 tests de la lectura de tarjetas de Automercado, del cruce por nombre (casos que deben cruzar y casos ambiguos o contradictorios que no: "deslactosada", "sin azúcar", la edad de un licor, paquetes de distinto número de unidades) y de la comparación con tres tiendas.
+- [`test_pequenomundo.py`](test_pequenomundo.py) tiene 9 tests de la lectura de las páginas de Pequeño Mundo: precios, ofertas, agotados, paquetes (`600ml 12unds` → `12 x 600ml`, `120g 2pcs`), paginación, productos repetidos entre categorías y páginas caídas.
+- [`test_app.py`](test_app.py) tiene 15 tests de la app con `streamlit.testing.v1.AppTest`: los dos modos de datos, métricas con dos, tres y cuatro tiendas, nombres de tienda con tilde, el selector de tiendas, filtros y el formulario de búsqueda. Usan una carpeta de datos temporal (variable `COMPARADOR_DATOS`) y, si Streamlit no está instalado, se saltan.
 
 La lógica cubre:
 
@@ -116,9 +117,14 @@ Automercado no usa VTEX y su catálogo no tiene una API pública: la página car
    - la **marca** del producto de referencia debe aparecer en el nombre;
    - el **tamaño** debe coincidir (±2%);
    - el resto del nombre debe parecerse (similitud de Jaccard ≥ 0,5, sin plurales, tamaños ni palabras de relleno), y ≥ 0,6 si cada nombre tiene palabras que el otro no ("con leche" frente a "con almendra");
+   - si los dos nombres dicen cuántas unidades trae el paquete, deben coincidir (12 × 237 ml suma casi lo mismo que 8 × 354 ml, pero es otro producto);
    - el mejor candidato debe ganarle al segundo por al menos 0,15. Si es ambiguo, no se cruza.
 
    Se prefiere perder coincidencias antes que emparejar productos distintos. Las filas cruzadas así se marcan en la columna `cruce_por_nombre`.
+
+### Pequeño Mundo
+
+Pequeño Mundo usa **Magento**, y sus páginas de categoría traen el nombre y el precio en el HTML, así que [`pequenomundo.py`](pequenomundo.py) las pide una por una con `urllib` (30 productos por página, 1 s de pausa), sin navegador. Solo lee **Abarrotes** (por subcategoría, para conservar el nombre de cada una) y **Mascotas**: el resto del sitio es hogar, ropa, muebles y ferretería. Los paquetes que escribe como `600ml 12unds` o `120g 2pcs` se pasan a `12 x 600ml`, como en las otras tiendas. Tampoco publica el código de barras, así que se cruza con las mismas reglas que Automercado.
 
 ## Columnas del CSV
 
@@ -126,7 +132,7 @@ Automercado no usa VTEX y su catálogo no tiene una API pública: la página car
 |---|---|
 | `ean` | Código de barras, la clave del cruce. |
 | `tiendas` | En cuántas tiendas está el producto (al menos 2). Las columnas de una tienda donde no está quedan vacías. |
-| `cruce_por_nombre` | Tiendas que se emparejaron por marca, tamaño y nombre en vez de por EAN (hoy, Automercado). |
+| `cruce_por_nombre` | Tiendas que se emparejaron por marca, tamaño y nombre en vez de por EAN (Automercado y Pequeño Mundo). |
 | `precio_<tienda>` | Precio actual (`Price`). |
 | `precio_lista_<tienda>` | Precio regular sin descuento (`ListPrice`). |
 | `oferta_<tienda>` | `Sí` si el precio actual es menor que el de lista. |
@@ -152,9 +158,11 @@ Automercado no usa VTEX y su catálogo no tiene una API pública: la página car
 
 ## Limitaciones
 
-- Solo compara productos que están en al menos dos tiendas. En Walmart y Masxmenos el cruce es por EAN. En Automercado es por nombre: encuentra menos coincidencias, puede tener algún error y deja fuera sus marcas propias (Auto Selección), que no existen en las otras tiendas.
+- Solo compara productos que están en al menos dos tiendas. En Walmart y Masxmenos el cruce es por EAN. En Automercado y Pequeño Mundo es por nombre: encuentra menos coincidencias, puede tener algún error y deja fuera sus marcas propias (Auto Selección), que no existen en las otras tiendas.
 - Los precios de Automercado son los de la sucursal que el sitio muestra por defecto (AM Moravia). Otras sucursales pueden tener otros precios.
-- El lector de Automercado depende del diseño de su sitio: si lo cambian, hay que ajustarlo.
+- Los lectores de Automercado y Pequeño Mundo dependen del diseño de sus sitios: si lo cambian, hay que ajustarlos.
+- Pequeño Mundo tiene un surtido de supermercado pequeño y muchos nombres sin marca, así que aporta pocas comparaciones.
+- Los términos de uso de Pequeño Mundo (sección 17) reservan sus contenidos y bases de datos y prohíben reproducirlos o exhibirlos sin permiso escrito.
 - El tamaño depende de cómo esté escrito el nombre. Si el formato es raro, el precio por kg/L queda vacío.
 - Los precios son los de la tienda en línea y pueden no coincidir con los de la tienda física.
 - No guarda historial: cada corrida es una foto del momento. El catálogo de la app tiene la fecha de su última actualización.

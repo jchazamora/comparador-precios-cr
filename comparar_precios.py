@@ -11,6 +11,7 @@ import json
 import re
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -61,6 +62,12 @@ _PATRON_TAMANO = re.compile(
 )
 # Por encima de esto casi seguro es un error de captura ("2838 L" que eran ml).
 MAXIMO_RAZONABLE = {"kg": 50, "L": 25}
+
+
+def clave(tienda: str) -> str:
+    """Sufijo de las columnas de una tienda: "Pequeño Mundo" -> "pequeno_mundo"."""
+    sin_tildes = unicodedata.normalize("NFKD", tienda).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "_", sin_tildes.lower()).strip("_")
 
 
 def extraer_tamano(nombre: str) -> tuple[float, str] | None:
@@ -262,16 +269,16 @@ def comparar(por_tienda: dict[str, list[Producto]]) -> list[dict]:
         fila = {"ean": ean, "nombre": primera.nombre, "categoria": primera.categoria,
                 "tiendas": len(ofertas)}
         for t in indices:
-            p, clave = ofertas.get(t), t.lower()
-            fila[f"precio_{clave}"] = p.precio if p else None
-            fila[f"precio_lista_{clave}"] = p.precio_lista if p else None
-            fila[f"oferta_{clave}"] = ("Sí" if p.en_oferta else "No") if p else ""
+            p, sufijo = ofertas.get(t), clave(t)
+            fila[f"precio_{sufijo}"] = p.precio if p else None
+            fila[f"precio_lista_{sufijo}"] = p.precio_lista if p else None
+            fila[f"oferta_{sufijo}"] = ("Sí" if p.en_oferta else "No") if p else ""
         fila["cantidad"] = cantidad
         fila["unidad"] = unidad
         for t in indices:
             p = ofertas.get(t)
             # Precio por kg o por L, según la columna "unidad".
-            fila[f"precio_por_unidad_{t.lower()}"] = (
+            fila[f"precio_por_unidad_{clave(t)}"] = (
                 round(p.precio / cantidad, 1) if p and cantidad else None
             )
         fila["mas_barata"] = mas_barata if diferencia > 0 else "Igual"
@@ -283,7 +290,7 @@ def comparar(por_tienda: dict[str, list[Producto]]) -> list[dict]:
         # Qué tiendas entraron por parecido de nombre y no por código de barras.
         fila["cruce_por_nombre"] = ", ".join(t for t, p in ofertas.items() if p.cruce == "nombre")
         for t in indices:
-            fila[f"url_{t.lower()}"] = ofertas[t].url if t in ofertas else ""
+            fila[f"url_{clave(t)}"] = ofertas[t].url if t in ofertas else ""
         filas.append(fila)
     return sorted(filas, key=lambda f: f["diferencia"], reverse=True)
 
@@ -297,7 +304,7 @@ def _imprimir(filas: list[dict]) -> None:
     for f in filas:
         nombre = f["nombre"][:ancho - 1]
         precios = "".join(
-            f"{f[f'precio_{t.lower()}']:>11,.0f}" + ("*" if f[f"oferta_{t.lower()}"] == "Sí" else " ")
+            f"{f[f'precio_{clave(t)}']:>11,.0f}" + ("*" if f[f"oferta_{clave(t)}"] == "Sí" else " ")
             for t in tiendas
         )
         print(f"{nombre:<{ancho}}{precios}{f['diferencia']:>9,.0f}  {f['mas_barata']}")

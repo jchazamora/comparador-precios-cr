@@ -62,6 +62,7 @@ class TestCruzarPorNombre(unittest.TestCase):
         ref("999", "Bebida Gaseosa Pepsi Cola Pet - 2.5 L", "PEPSI"),
         ref("1010", "Ron flor de caña añejo 25 años - 750 ml", "FLOR DE CAÑA"),
         ref("1111", "Atún Sardimar trozos en agua bajo en sodio light - 140 g", "SARDIMAR"),
+        ref("1212", "Gaseosa Coca-Cola 8 pack - 2832 ml", "COCA COLA"),
     ]
 
     def cruzar(self, *nombres):
@@ -115,6 +116,11 @@ class TestCruzarPorNombre(unittest.TestCase):
     def test_bajo_en_sal_es_bajo_en_sodio(self):
         nombre = "Atun Lomo Trozos Agua Bajo En Sal Light Sardimar Lata 140 G"
         self.assertEqual(self.cruzar(nombre), {nombre: "1111"})
+
+    def test_el_numero_de_unidades_del_paquete_debe_coincidir(self):
+        # 12 x 237 ml = 2844 ml: dentro del 2% de 2832 ml, pero es otro paquete.
+        self.assertEqual(self.cruzar("Gaseosa Coca Cola 12 x 237ml"), {})
+        self.assertEqual(self.cruzar("Gaseosa Coca Cola 8 x 354ml"), {"Gaseosa Coca Cola 8 x 354ml": "1212"})
 
     def test_un_ean_para_un_solo_producto(self):
         cruces = self.cruzar("Galletas Maria Pozuelo Paquete 200 G", "Galletas Maria Pozuelo Original Paquete 200 G")

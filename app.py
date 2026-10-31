@@ -15,11 +15,11 @@ import streamlit as st
 
 import comparar_precios as cp
 
-TIENDAS = ["Walmart", "Masxmenos", "Automercado"]
+TIENDAS = ["Walmart", "Masxmenos", "Automercado", "Pequeño Mundo"]
 # Colores por tienda (paleta categórica validada para daltonismo), con su paso para tema oscuro.
 COLORES = {
-    "light": {"Walmart": "#2a78d6", "Masxmenos": "#eb6834", "Automercado": "#1baf7a"},
-    "dark": {"Walmart": "#3987e5", "Masxmenos": "#d95926", "Automercado": "#199e70"},
+    "light": {"Walmart": "#2a78d6", "Masxmenos": "#eb6834", "Automercado": "#1baf7a", "Pequeño Mundo": "#eda100"},
+    "dark": {"Walmart": "#3987e5", "Masxmenos": "#d95926", "Automercado": "#199e70", "Pequeño Mundo": "#c98500"},
 }
 TERMINOS_INICIALES = "arroz, frijoles, leche"
 PRODUCTOS_EN_GRAFICO = 15
@@ -52,13 +52,13 @@ def cargar_catalogo(_modificado: float) -> tuple[pd.DataFrame, dict]:
 
 
 def tiendas_en(df: pd.DataFrame) -> list[str]:
-    return [t for t in TIENDAS if f"precio_{t.lower()}" in df.columns]
+    return [t for t in TIENDAS if f"precio_{cp.clave(t)}" in df.columns]
 
 
 def recalcular(df: pd.DataFrame, tiendas: list[str]) -> pd.DataFrame:
     """Vuelve a calcular la comparación usando solo las tiendas elegidas."""
-    precios = df[[f"precio_{t.lower()}" for t in tiendas]].set_axis(tiendas, axis=1)
-    listas = df[[f"precio_lista_{t.lower()}" for t in tiendas]].set_axis(tiendas, axis=1)
+    precios = df[[f"precio_{cp.clave(t)}" for t in tiendas]].set_axis(tiendas, axis=1)
+    listas = df[[f"precio_lista_{cp.clave(t)}" for t in tiendas]].set_axis(tiendas, axis=1)
     df = df[precios.notna().sum(axis=1) >= 2].copy()
     precios, listas = precios.loc[df.index], listas.loc[df.index]
     maximo, minimo = precios.max(axis=1), precios.min(axis=1)
@@ -89,7 +89,7 @@ def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str,
                         scale=alt.Scale(domain=tiendas, range=[colores[t] for t in tiendas]),
                         legend=alt.Legend(orient="top")),
         tooltip=[alt.Tooltip("nombre:N", title="Producto")]
-        + [alt.Tooltip(f"precio_{t.lower()}:Q", title=f"{t} ₡", format=",.0f") for t in tiendas]
+        + [alt.Tooltip(f"precio_{cp.clave(t)}:Q", title=f"{t} ₡", format=",.0f") for t in tiendas]
         + [alt.Tooltip("diferencia:Q", title="Diferencia ₡", format=",.0f"),
            alt.Tooltip("mas_barata:N", title="Más barato en")],
     )
@@ -101,7 +101,7 @@ def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str,
 
 
 def tabla(df: pd.DataFrame, tiendas: list[str]) -> pd.DataFrame:
-    claves = [t.lower() for t in tiendas]
+    claves = [cp.clave(t) for t in tiendas]
     columnas = (
         ["nombre", "categoria"] + [f"precio_{c}" for c in claves]
         + ["mas_barata", "diferencia", "diferencia_pct"] + [f"oferta_{c}" for c in claves]
@@ -133,7 +133,7 @@ def configuracion_tabla(tiendas: list[str], maximo_pct: float) -> dict:
         "ean": st.column_config.TextColumn("EAN"),
     }
     for t in tiendas:
-        c = t.lower()
+        c = cp.clave(t)
         config[f"precio_{c}"] = st.column_config.NumberColumn(t, format="₡%,.0f")
         config[f"oferta_{c}"] = st.column_config.CheckboxColumn(f"Oferta {t}")
         config[f"precio_por_unidad_{c}"] = st.column_config.NumberColumn(f"{t} ₡/unidad", format="₡%,.0f")
@@ -240,7 +240,7 @@ def main() -> None:
             f"{int((con_dif['diferencia_lista'] == 0).sum())} de esas diferencias se deben solo a una oferta."
         )
     if "cruce_por_nombre" in df and (df["cruce_por_nombre"] != "").any():
-        st.caption("Automercado no publica códigos de barras: sus productos se emparejan por marca, tamaño "
+        st.caption("Automercado y Pequeño Mundo no publican códigos de barras: sus productos se emparejan por marca, tamaño "
                    "y nombre, y pueden tener algún error. La columna *Cruce por nombre* los identifica.")
 
     st.subheader(f"Mayores diferencias de precio (top {PRODUCTOS_EN_GRAFICO})")

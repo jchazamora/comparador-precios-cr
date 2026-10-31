@@ -207,6 +207,12 @@ def _mismo_tamano(a: tuple[float, str], b: tuple[float, str]) -> bool:
     return a[1] == b[1] and abs(a[0] - b[0]) <= 0.02 * max(a[0], b[0])
 
 
+def _unidades_del_paquete(nombre: str) -> int | None:
+    """Cuántas unidades trae un paquete, si el nombre lo dice ("12 x 237ml", "8 pack")."""
+    m = re.search(r"\b(\d+)\s*(?:x\s*\d|pack\b)", _normalizar(nombre))
+    return int(m.group(1)) if m else None
+
+
 def cruzar_por_nombre(productos: list[cp.Producto], referencia: list[cp.Producto]) -> list[cp.Producto]:
     """Asigna a cada producto de Automercado el EAN del producto de referencia equivalente.
 
@@ -239,6 +245,10 @@ def cruzar_por_nombre(productos: list[cp.Producto], referencia: list[cp.Producto
         for marca in marcas:
             for ref, tam_ref in por_marca[marca]:
                 if not _mismo_tamano(tamano, tam_ref):
+                    continue
+                # 12 latas de 237 ml suman casi lo mismo que 8 de 354 ml, pero no son el mismo paquete.
+                paquetes = _unidades_del_paquete(prod.nombre), _unidades_del_paquete(ref.nombre)
+                if None not in paquetes and paquetes[0] != paquetes[1]:
                     continue
                 a, b = _tokens(prod.nombre, set(marca.split())), _tokens(ref.nombre, set(marca.split()))
                 if a and b and not _se_contradicen(a, b):
