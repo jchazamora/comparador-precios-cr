@@ -6,35 +6,40 @@ toolbarMode = "viewer"
 [browser]
 gatherUsageStats = false
 
-# Colores en sintonía con estilo.py (PALETA).
+# Colores iguales a paleta.py (test_colorimetria.py comprueba que coincidan).
+# Auditoría de contraste y daltonismo: docs/colorimetria.md.
 [theme]
 font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-headingFont = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-headingFontWeights = [800, 700, 700, 600, 600, 600]
-baseRadius = "0.75rem"
-buttonRadius = "0.75rem"
+headingFont = "Plus Jakarta Sans:https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+headingFontWeights = [800, 800, 700, 700, 600, 600]
+baseRadius = "0.8rem"
+buttonRadius = "0.8rem"
 showWidgetBorder = true
+chartCategoricalColors = ["#2a78d6", "#f15a25", "#1baf7a", "#e8a317"]
 
 [theme.light]
-primaryColor = "#6a4cff"
-backgroundColor = "#f6f7fb"
-secondaryBackgroundColor = "#eef0f7"
-textColor = "#171a2b"
-borderColor = "#e6e8f0"
-dataframeBorderColor = "#e6e8f0"
+primaryColor = "#8b3dff"
+linkColor = "#6d28d9"
+backgroundColor = "#f7f7fb"
+secondaryBackgroundColor = "#f1effa"
+textColor = "#16142b"
+borderColor = "#e8e7f1"
+dataframeBorderColor = "#e8e7f1"
 
 [theme.light.sidebar]
 backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f3f4fa"
+secondaryBackgroundColor = "#f4efff"
 
 [theme.dark]
-primaryColor = "#9b87ff"
-backgroundColor = "#0d0f1a"
-secondaryBackgroundColor = "#1b1e33"
-textColor = "#eceef8"
-borderColor = "#262a42"
-dataframeBorderColor = "#262a42"
+primaryColor = "#8b3dff"
+linkColor = "#c4b5fd"
+backgroundColor = "#0f0e1c"
+secondaryBackgroundColor = "#1d1b35"
+textColor = "#eeedf9"
+borderColor = "#2b2946"
+dataframeBorderColor = "#2b2946"
+chartCategoricalColors = ["#3987e5", "#bd3311", "#199e70", "#c17f11"]
 
 [theme.dark.sidebar]
-backgroundColor = "#111426"
-secondaryBackgroundColor = "#1b1e33"
+backgroundColor = "#131224"
+secondaryBackgroundColor = "#231c47"

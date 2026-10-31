@@ -106,6 +106,7 @@ Ningún test hace peticiones reales ni abre un navegador: la API de VTEX se simu
 - [`test_automercado.py`](test_automercado.py) tiene 22 tests de la lectura de tarjetas de Automercado, del cruce por nombre (casos que deben cruzar y casos ambiguos o contradictorios que no: "deslactosada", "sin azúcar", la edad de un licor, paquetes de distinto número de unidades) y de la comparación con tres tiendas.
 - [`test_pequenomundo.py`](test_pequenomundo.py) tiene 9 tests de la lectura de las páginas de Pequeño Mundo: precios, ofertas, agotados, paquetes (`600ml 12unds` → `12 x 600ml`, `120g 2pcs`), paginación, productos repetidos entre categorías y páginas caídas.
 - [`test_db.py`](test_db.py) tiene 24 tests del historial (tramos que se alargan, se abren o dejan huecos; una sola corrida por fecha; volver al mismo precio no cuenta como cambio), del registro e inicio de sesión (contraseña cifrada, correo repetido, mayúsculas en el correo, límites de longitud, bloqueo tras varios fallos), de la búsqueda (`%` y `_` como texto), de favoritos, de la lista de compras y de la eliminación de la cuenta.
+- [`test_colorimetria.py`](test_colorimetria.py) tiene 10 tests de color: contraste WCAG de cada texto en tema claro y oscuro, que las tiendas se distingan entre sí (también con daltonismo), que la marca no se parezca a ninguna tienda y que `.streamlit/config.toml` coincida con [`paleta.py`](paleta.py).
 - [`test_app.py`](test_app.py) tiene 15 tests de la app con `streamlit.testing.v1.AppTest`: los dos modos de datos, métricas con dos, tres y cuatro tiendas, nombres de tienda con tilde, el selector de tiendas, filtros y el formulario de búsqueda. Usan una carpeta de datos temporal (variable `COMPARADOR_DATOS`) y, si Streamlit no está instalado, se saltan.
 
 La lógica cubre:
@@ -153,6 +154,19 @@ Automercado no usa VTEX y su catálogo no tiene una API pública: la página car
 ### Pequeño Mundo
 
 Pequeño Mundo usa **Magento**, y sus páginas de categoría traen el nombre y el precio en el HTML, así que [`pequenomundo.py`](pequenomundo.py) las pide una por una con `urllib` (30 productos por página, 1 s de pausa), sin navegador. Solo lee **Abarrotes** (por subcategoría, para conservar el nombre de cada una) y **Mascotas**: el resto del sitio es hogar, ropa, muebles y ferretería. Los paquetes que escribe como `600ml 12unds` o `120g 2pcs` se pasan a `12 x 600ml`, como en las otras tiendas. Tampoco publica el código de barras, así que se cruza con las mismas reglas que Automercado.
+
+## Diseño y colores
+
+Los colores están en [`paleta.py`](paleta.py) y se auditaron uno por uno: [`docs/colorimetria.md`](docs/colorimetria.md) tiene las medidas antes y después, las decisiones y capturas.
+
+- **La marca es violeta → fucsia,** un tono que no usa ninguna tienda, para que la app nunca parezca "de" una de ellas.
+- **Cada tienda tiene un color fijo** que se distingue de las demás, también con daltonismo, y siempre va acompañado de su nombre.
+- **El verde se reserva para los ahorros,** siempre con texto («↓ Ahorras ₡…»).
+- **Contraste:** todo el texto cumple WCAG (4.5:1) en tema claro y oscuro.
+
+`python colorimetria.py` vuelve a medir todo.
+
+![Portada de la app](docs/img/despues-claro-portada.jpg)
 
 ## Columnas del CSV
 

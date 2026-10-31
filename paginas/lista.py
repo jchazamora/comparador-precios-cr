@@ -34,7 +34,7 @@ def _totales(df: pd.DataFrame, cantidades: dict[str, int], tiendas: list[str]) -
         )
     ahorro = completas["total"].iloc[0] - combinada if mejor else 0
     tarjetas.append(
-        f'<div class="total" style="--t:{estilo.PALETA[estilo.tema()]["acento"]}">'
+        f'<div class="total" style="--t:{estilo.colores()["primario"]}">'
         f'<div class="tienda">Comprando cada producto donde es más barato</div>'
         f'<div class="monto">{estilo.precio(combinada)}</div>'
         f'<div class="nota">'

@@ -16,10 +16,15 @@ MODO_CATALOGO = "Catálogo completo"
 MODO_EN_VIVO = "Búsqueda en vivo"
 
 
-def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str, str]) -> alt.Chart:
-    """Barras con la diferencia porcentual, del color de la tienda más barata."""
+def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str, str],
+                        tinta: str = "gray", rejilla: str = "#e5e5e5") -> alt.Chart:
+    """Barras con la diferencia porcentual, del color de la tienda más barata.
+
+    Cada barra lleva escrito el nombre de la tienda: con cuatro tiendas, el color solo
+    no basta para todos (ver docs/colorimetria.md).
+    """
     top = df[df["diferencia"] > 0].nlargest(PRODUCTOS_EN_GRAFICO, "diferencia_pct").copy()
-    top["etiqueta"] = top["diferencia_pct"].map(lambda v: f"{v:.0f}%")
+    top["etiqueta"] = [f"{v:.0f}% · {t}" for v, t in zip(top["diferencia_pct"], top["mas_barata"])]
 
     # Orden explícito: con capas, el sort por campo de Vega-Lite no se respeta.
     orden = top.sort_values("diferencia_pct", ascending=False)["nombre"].tolist()
@@ -27,8 +32,9 @@ def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str,
         y=alt.Y("nombre:N", sort=orden, title=None,
                 axis=alt.Axis(labelLimit=340, labelOverlap=False, ticks=False, domain=False, labelPadding=8)),
         x=alt.X("diferencia_pct:Q", title="% más barato que la tienda más cara",
-                scale=alt.Scale(domain=[0, float(top["diferencia_pct"].max()) * 1.12]),
-                axis=alt.Axis(labelExpr="datum.value + '%'", grid=True, gridOpacity=0.25, domain=False, ticks=False)),
+                scale=alt.Scale(domain=[0, float(top["diferencia_pct"].max()) * 1.4]),
+                axis=alt.Axis(labelExpr="datum.value + '%'", grid=True, gridColor=rejilla, domain=False, ticks=False,
+                              values=[v for v in range(0, 101, 10) if v <= top["diferencia_pct"].max() * 1.4])),
     )
     barras = base.mark_bar(cornerRadiusEnd=4, height={"band": 0.62}).encode(
         color=alt.Color("mas_barata:N", title="Más barato en",
@@ -39,7 +45,7 @@ def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str,
         + [alt.Tooltip("diferencia:Q", title="Diferencia ₡", format=",.0f"),
            alt.Tooltip("mas_barata:N", title="Más barato en")],
     )
-    etiquetas = base.mark_text(fontSize=11, color="gray", align="left", dx=5).encode(text="etiqueta:N")
+    etiquetas = base.mark_text(fontSize=11, color=tinta, align="left", dx=6).encode(text="etiqueta:N")
     # Sin el menú de Vega (exportar, ver código fuente con los datos).
     return (barras + etiquetas).properties(
         height=32 * len(top), usermeta={"embedOptions": {"actions": False}},
@@ -218,7 +224,8 @@ def mostrar() -> None:
     estilo.seccion(f"Mayores diferencias de precio", f"top {PRODUCTOS_EN_GRAFICO}")
     with st.container(border=True):
         if (filtrado["diferencia"] > 0).any():
-            st.altair_chart(grafico_diferencias(filtrado, tiendas, colores), width="stretch")
+            p = estilo.colores()
+            st.altair_chart(grafico_diferencias(filtrado, tiendas, colores, p["suave"], p["rejilla"]), width="stretch")
         else:
             st.info("Ningún producto con los filtros actuales tiene diferencia de precio.")
 
