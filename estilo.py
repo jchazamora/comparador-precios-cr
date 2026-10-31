@@ -77,8 +77,14 @@ def css() -> str:
     .chip {{ display: inline-flex; align-items: center; gap: 8px; padding: 6px 13px 6px 10px; border-radius: 999px;
         background: rgba(255,255,255,{_CLARO['chip_fondo'][1]}); color: {c('chip_texto')}; font-size: .86rem;
         font-weight: 500; box-shadow: 0 2px 10px rgba(20,8,60,.18); }}
-    .chip .punto {{ width: 10px; height: 10px; border-radius: 50%; }}
+    .chip .punto {{ width: 10px; height: 10px; border-radius: 50%; flex: none; }}
     .chip b {{ font-weight: 700; }}
+    .chip {{ white-space: nowrap; }}  /* una píldora pasa entera a la línea siguiente, no se parte por dentro */
+    @media (max-width: 640px) {{
+        .hero {{ padding: 24px 20px 20px; border-radius: 20px; }}
+        .hero p {{ font-size: .98rem; margin-bottom: 16px; }}
+        .chip {{ font-size: .8rem; padding: 5px 11px 5px 9px; }}
+    }}
 
     /* Encabezados de sección */
     .seccion {{ display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 28px 0 8px; }}
@@ -90,9 +96,14 @@ def css() -> str:
     [data-testid="stMetric"] {{ background: {c('superficie')}; border: 1px solid {c('borde')};
         border-radius: 18px; padding: 16px 18px; box-shadow: {sombra}; }}
     [data-testid="stMetricLabel"] p {{ color: {c('suave')}; font-weight: 500; }}
-    /* Etiquetas largas ("Pequeño Mundo más barato") en dos líneas en vez de cortadas con "…". */
+    /* Etiquetas largas ("Pequeño Mundo más barato") en dos líneas en vez de cortadas con "…", sin partir palabras. */
     [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * {{
-        white-space: normal !important; overflow: visible !important; text-overflow: clip !important; }}
+        white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
+        word-break: normal !important; overflow-wrap: normal !important; }}
+    /* Resumen: en pantallas medianas las tarjetas pasan a la línea siguiente en vez de achicarse hasta cortar
+       las cifras ("13,2…"). En celulares Streamlit ya las apila. */
+    .st-key-resumen [data-testid="stHorizontalBlock"] {{ flex-wrap: wrap; }}
+    .st-key-resumen [data-testid="stColumn"] {{ flex: 1 1 200px !important; min-width: 200px; }}
     [data-testid="stMetricValue"] {{ color: {c('texto')}; font-family: {FUENTE_TITULOS}; font-weight: 800;
         letter-spacing: -0.02em; }}
     [class*="st-key-kpi-"] [data-testid="stMetric"] {{ border-top: 4px solid var(--kpi, {c('primario')}); }}

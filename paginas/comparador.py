@@ -211,21 +211,23 @@ def mostrar() -> None:
     conteo = df["mas_barata"].value_counts()
     con_dif = df[df["diferencia"] > 0]
     estilo.seccion("Resumen", "en cuántos productos gana cada tienda")
-    general = st.columns(3)
-    general[0].metric("Productos comparados", f"{len(df):,}", icon="🧺")
-    general[1].metric("Mismo precio", f"{int(conteo.get('Igual', 0)):,}", icon="🟰")
-    if not con_dif.empty:
-        general[2].metric(
-            "Diferencia promedio", f"{con_dif['diferencia_pct'].mean():.1f}%", icon="💸",
-            delta=f"₡{con_dif['diferencia'].mean():,.0f} por producto", delta_color="off", delta_arrow="off",
-            help=f"{int((con_dif['diferencia_lista'] == 0).sum())} de las diferencias se deben solo a una oferta.",
-        )
-    por_tienda = st.columns(len(tiendas))
-    for col, t in zip(por_tienda, tiendas):
-        with col.container(key=f"kpi-{cp.clave(t).replace('_', '-')}"):
-            ganados = int(conteo.get(t, 0))
-            st.metric(f"{t} más barato", f"{ganados:,}", delta_color="off", delta_arrow="off",
-                      delta=f"{100 * ganados / len(df):.0f}% de los productos" if len(df) else None)
+    # La key permite que, en pantallas medianas, las tarjetas pasen a otra línea en vez de cortar las cifras (estilo.py).
+    with st.container(key="resumen"):
+        general = st.columns(3)
+        general[0].metric("Productos comparados", f"{len(df):,}", icon="🧺")
+        general[1].metric("Mismo precio", f"{int(conteo.get('Igual', 0)):,}", icon="🟰")
+        if not con_dif.empty:
+            general[2].metric(
+                "Diferencia promedio", f"{con_dif['diferencia_pct'].mean():.1f}%", icon="💸",
+                delta=f"₡{con_dif['diferencia'].mean():,.0f} por producto", delta_color="off", delta_arrow="off",
+                help=f"{int((con_dif['diferencia_lista'] == 0).sum())} de las diferencias se deben solo a una oferta.",
+            )
+        por_tienda = st.columns(len(tiendas))
+        for col, t in zip(por_tienda, tiendas):
+            with col.container(key=f"kpi-{cp.clave(t).replace('_', '-')}"):
+                ganados = int(conteo.get(t, 0))
+                st.metric(f"{t} más barato", f"{ganados:,}", delta_color="off", delta_arrow="off",
+                          delta=f"{100 * ganados / len(df):.0f}% de los productos" if len(df) else None)
 
     if (filtrado["diferencia"] >= 300).any():
         estilo.seccion("Donde más ahorras", "toca una tarjeta para abrir el producto en la tienda más barata")
