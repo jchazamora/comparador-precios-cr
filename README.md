@@ -57,7 +57,7 @@ docker compose up -d
 copy .env.example .env           # en macOS/Linux: cp .env.example .env
 ```
 
-En producción se usa una base en la nube, por ejemplo [Neon](https://neon.tech) (plan gratis): se crea el proyecto, se copia su *connection string* y se pone como `DATABASE_URL` en `.env` (local) o en los *secrets* de Streamlit Community Cloud. Las tablas se crean solas la primera vez que se guarda una corrida. Sin `DATABASE_URL`, el comparador funciona igual y las páginas de cuenta avisan que falta configurar la base.
+En producción se usa una base en la nube, por ejemplo [Neon](https://neon.tech) (plan gratis): se crea el proyecto, se copia su *connection string* y se pone como `DATABASE_URL` en `.env` (local) o en los *secrets* de Streamlit Community Cloud. Las tablas se crean solas la primera vez que se guarda una corrida. Sin `DATABASE_URL`, el comparador funciona igual y las páginas de cuenta no aparecen (el aviso queda en el log del servidor).
 
 Seguridad de las cuentas:
 
@@ -94,6 +94,20 @@ python comparar_precios.py arroz frijoles leche --max 100 --csv precios.csv
 | `--max` | Máximo de productos por término y tienda (por defecto 100). |
 | `--csv` | Ruta del archivo CSV de salida. |
 
+### Publicar en Streamlit Community Cloud
+
+1. En [share.streamlit.io](https://share.streamlit.io), crear la app desde este repositorio (rama `main`, archivo `app.py`).
+2. En la app: **⋮ → Settings → Secrets**, pegar la URL de la base en formato TOML, **con comillas**, y guardar:
+
+   ```toml
+   DATABASE_URL = "postgresql://usuario:clave@servidor.neon.tech/neondb?sslmode=require"
+   ```
+
+   Sin las comillas, el TOML no es válido y la app no ve la base. La app lee la URL de los *secrets* directamente (además de la variable de entorno), así que funciona aunque los *secrets* se editen con la app ya corriendo.
+3. La app se reinicia sola. Con la base configurada aparecen en el menú «Mis compras» y «Cuenta»; sin ella, solo el comparador.
+
+Las fechas se muestran en hora de Costa Rica (UTC-6), aunque el servidor de Streamlit Cloud esté en UTC.
+
 ## Tests
 
 ```bash
@@ -105,9 +119,9 @@ Ningún test hace peticiones reales ni abre un navegador: la API de VTEX se simu
 - [`test_comparar_precios.py`](test_comparar_precios.py) tiene 45 tests de la lógica. No necesita dependencias externas.
 - [`test_automercado.py`](test_automercado.py) tiene 22 tests de la lectura de tarjetas de Automercado, del cruce por nombre (casos que deben cruzar y casos ambiguos o contradictorios que no: "deslactosada", "sin azúcar", la edad de un licor, paquetes de distinto número de unidades) y de la comparación con tres tiendas.
 - [`test_pequenomundo.py`](test_pequenomundo.py) tiene 9 tests de la lectura de las páginas de Pequeño Mundo: precios, ofertas, agotados, paquetes (`600ml 12unds` → `12 x 600ml`, `120g 2pcs`), paginación, productos repetidos entre categorías y páginas caídas.
-- [`test_db.py`](test_db.py) tiene 24 tests del historial (tramos que se alargan, se abren o dejan huecos; una sola corrida por fecha; volver al mismo precio no cuenta como cambio), del registro e inicio de sesión (contraseña cifrada, correo repetido, mayúsculas en el correo, límites de longitud, bloqueo tras varios fallos), de la búsqueda (`%` y `_` como texto), de favoritos, de la lista de compras y de la eliminación de la cuenta.
-- [`test_colorimetria.py`](test_colorimetria.py) tiene 10 tests de color: contraste WCAG de cada texto en tema claro y oscuro, que las tiendas se distingan entre sí (también con daltonismo), que la marca no se parezca a ninguna tienda y que `.streamlit/config.toml` coincida con [`paleta.py`](paleta.py).
-- [`test_app.py`](test_app.py) tiene 15 tests de la app con `streamlit.testing.v1.AppTest`: los dos modos de datos, métricas con dos, tres y cuatro tiendas, nombres de tienda con tilde, el selector de tiendas, filtros y el formulario de búsqueda. Usan una carpeta de datos temporal (variable `COMPARADOR_DATOS`) y, si Streamlit no está instalado, se saltan.
+- [`test_db.py`](test_db.py) tiene 27 tests: de dónde se lee `DATABASE_URL` (entorno o *secrets* de Streamlit), del historial (tramos que se alargan, se abren o dejan huecos; una sola corrida por fecha; volver al mismo precio no cuenta como cambio), del registro e inicio de sesión (contraseña cifrada, correo repetido, mayúsculas en el correo, límites de longitud, bloqueo tras varios fallos), de la búsqueda (`%` y `_` como texto), de favoritos, de la lista de compras y de la eliminación de la cuenta.
+- [`test_colorimetria.py`](test_colorimetria.py) tiene 13 tests de color: contraste WCAG de cada texto en tema claro y oscuro, que las tiendas se distingan entre sí (también con daltonismo), que la marca no se parezca a ninguna tienda, que `.streamlit/config.toml` coincida con [`paleta.py`](paleta.py) y que ningún color del CSS quede fijo a un tema (todos van en `light-dark()`).
+- [`test_app.py`](test_app.py) tiene 17 tests de la app con `streamlit.testing.v1.AppTest`: los dos modos de datos, métricas con dos, tres y cuatro tiendas, nombres de tienda con tilde, el selector de tiendas, filtros, el formulario de búsqueda y que sin base de datos no se ofrezcan cuentas (y con la base en los *secrets*, sí). Usan una carpeta de datos temporal (variable `COMPARADOR_DATOS`) y, si Streamlit no está instalado, se saltan.
 
 La lógica cubre:
 
@@ -163,6 +177,7 @@ Los colores están en [`paleta.py`](paleta.py) y se auditaron uno por uno: [`doc
 - **Cada tienda tiene un color fijo** que se distingue de las demás, también con daltonismo, y siempre va acompañado de su nombre.
 - **El verde se reserva para los ahorros,** siempre con texto («↓ Ahorras ₡…»).
 - **Contraste:** todo el texto cumple WCAG (4.5:1) en tema claro y oscuro.
+- **Claro y oscuro de verdad:** cada color del CSS se escribe como `light-dark(claro, oscuro)` y el navegador elige según el tema que muestra Streamlit, así que nada se vuelve ilegible si alguien cambia de tema sin recargar. Las etiquetas de los gráficos van en ejes, que también colorea el tema.
 
 `python colorimetria.py` vuelve a medir todo.
 
@@ -216,4 +231,3 @@ Los colores están en [`paleta.py`](paleta.py) y se auditaron uno por uno: [`doc
 
 - Agregar más cadenas que usen VTEX o tengan otra API pública y cuyos términos lo permitan.
 - Actualizar el catálogo automáticamente cada día con GitHub Actions.
-- Publicar la app en Streamlit Community Cloud.

@@ -188,6 +188,34 @@ Resultado del validador del skill después del cambio (`--pairs all`):
 | Portada 2 vs. tienda más parecida (Walmart) | `#7c3aed` / `#3987e5` | 17.5 ΔE | 15 ΔE | ✅ |
 | Portada 3 vs. tienda más parecida (Masxmenos) | `#86198f` / `#bd3311` | 22.6 ΔE | 15 ΔE | ✅ |
 
+## Corrección posterior: el tema que se ve y el que creía el servidor
+
+Ya publicada la app, apareció un caso que la auditoría no cubría: con el sistema en modo oscuro y la app cambiada a
+**Light** desde su menú, las tarjetas de métricas salían oscuras con los números también oscuros, y los títulos de
+sección casi blancos sobre fondo blanco.
+
+**Causa.** El CSS se armaba en el servidor con el tema que reportaba `st.context.theme`. Cambiar de tema en el navegador
+no vuelve a ejecutar la app, así que el CSS quedaba con los colores del tema anterior. Streamlit pintaba sus propios
+textos con el tema nuevo y los nuestros con el viejo.
+
+**Corrección.**
+
+- Streamlit marca su contenedor (`.stApp`) con el `color-scheme` del tema que muestra. Por eso todo color del CSS se
+  escribe ahora como `light-dark(claro, oscuro)` y el navegador elige en el momento, sin pasar por el servidor. Esto
+  incluye los colores en línea (insignias, puntos de las píldoras, tarjetas de la lista).
+- Los gráficos se arman en el servidor y no pueden usar `light-dark()`. Por eso sus textos («50% · Masxmenos» y el
+  nombre de cada tienda en el historial) pasaron de marcas de texto a etiquetas de un eje derecho. Los ejes los colorea
+  el tema de Streamlit en el navegador.
+- El logo es uno solo: el nombre va en el violeta de la marca, que se lee sobre la barra clara (4.99:1) y la oscura
+  (3.69:1, texto grande).
+- [`test_colorimetria.py`](../test_colorimetria.py) comprueba que ningún color de la paleta quede fijo fuera de
+  `light-dark()`.
+
+Se probó en el navegador:
+- cambiando el sistema de claro a oscuro sin recargar;
+- con el sistema oscuro y la app en Light desde el menú (el caso reportado);
+- con el sistema oscuro y la app en Dark desde el menú.
+
 ## Capturas
 
 | Antes | Después |

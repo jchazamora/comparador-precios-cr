@@ -16,27 +16,36 @@ MODO_CATALOGO = "Catálogo completo"
 MODO_EN_VIVO = "Búsqueda en vivo"
 
 
-def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str, str],
-                        tinta: str = "gray", rejilla: str = "#e5e5e5") -> alt.Chart:
+SEPARADOR = "§"  # une nombre, EAN y etiqueta en la categoría de cada barra
+
+
+def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str, str]) -> alt.Chart:
     """Barras con la diferencia porcentual, del color de la tienda más barata.
 
-    Cada barra lleva escrito el nombre de la tienda: con cuatro tiendas, el color solo
-    no basta para todos (ver docs/colorimetria.md).
+    El porcentaje y la tienda ("50% · Masxmenos") van como etiquetas de un segundo eje, a
+    la derecha. Los ejes los colorea el tema de Streamlit en el navegador, así que se leen
+    en claro y en oscuro aunque se cambie de tema sin recargar. Escribir la tienda hace
+    falta porque, con cuatro tiendas, el color solo no basta (ver docs/colorimetria.md).
     """
     top = df[df["diferencia"] > 0].nlargest(PRODUCTOS_EN_GRAFICO, "diferencia_pct").copy()
-    top["etiqueta"] = [f"{v:.0f}% · {t}" for v, t in zip(top["diferencia_pct"], top["mas_barata"])]
-
+    # Una categoría por producto (el EAN separa productos con el mismo nombre); cada eje muestra su parte.
+    top["fila"] = [f"{n}{SEPARADOR}{e}{SEPARADOR}{v:.0f}% · {t}"
+                   for n, e, v, t in zip(top["nombre"], top["ean"], top["diferencia_pct"], top["mas_barata"])]
     # Orden explícito: con capas, el sort por campo de Vega-Lite no se respeta.
-    orden = top.sort_values("diferencia_pct", ascending=False)["nombre"].tolist()
-    base = alt.Chart(top).encode(
-        y=alt.Y("nombre:N", sort=orden, title=None,
-                axis=alt.Axis(labelLimit=340, labelOverlap=False, ticks=False, domain=False, labelPadding=8)),
-        x=alt.X("diferencia_pct:Q", title="% más barato que la tienda más cara",
-                scale=alt.Scale(domain=[0, float(top["diferencia_pct"].max()) * 1.4]),
-                axis=alt.Axis(labelExpr="datum.value + '%'", grid=True, gridColor=rejilla, domain=False, ticks=False,
-                              values=[v for v in range(0, 101, 10) if v <= top["diferencia_pct"].max() * 1.4])),
-    )
-    barras = base.mark_bar(cornerRadiusEnd=4, height={"band": 0.62}).encode(
+    orden = top.sort_values("diferencia_pct", ascending=False)["fila"].tolist()
+
+    def eje_y(orientacion: str, parte: int, **opciones) -> alt.Y:
+        return alt.Y("fila:N", sort=orden, title=None, axis=alt.Axis(
+            orient=orientacion, labelExpr=f"split(datum.label, '{SEPARADOR}')[{parte}]",
+            labelOverlap=False, ticks=False, domain=False, labelPadding=8, **opciones))
+
+    x = alt.X("diferencia_pct:Q", title="% más barato que la tienda más cara",
+              scale=alt.Scale(domain=[0, float(top["diferencia_pct"].max()) * 1.05]),
+              axis=alt.Axis(labelExpr="datum.value + '%'", domain=False, ticks=False))
+    # Capa invisible y sin tooltip, debajo de las barras, solo para dibujar el eje derecho.
+    derecha = alt.Chart(top).mark_bar(opacity=0, tooltip=None).encode(x=x, y=eje_y("right", 2))
+    barras = alt.Chart(top).mark_bar(cornerRadiusEnd=4, height={"band": 0.62}).encode(
+        x=x, y=eje_y("left", 0, labelLimit=300),
         color=alt.Color("mas_barata:N", title="Más barato en",
                         scale=alt.Scale(domain=tiendas, range=[colores[t] for t in tiendas]),
                         legend=alt.Legend(orient="top", symbolType="circle", labelFontSize=12)),
@@ -45,10 +54,11 @@ def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str,
         + [alt.Tooltip("diferencia:Q", title="Diferencia ₡", format=",.0f"),
            alt.Tooltip("mas_barata:N", title="Más barato en")],
     )
-    etiquetas = base.mark_text(fontSize=11, color=tinta, align="left", dx=6).encode(text="etiqueta:N")
-    # Sin el menú de Vega (exportar, ver código fuente con los datos).
-    return (barras + etiquetas).properties(
-        height=32 * len(top), usermeta={"embedOptions": {"actions": False}},
+    # Sin el menú de Vega (exportar, ver código fuente con los datos). Los márgenes dejan lugar a las
+    # etiquetas: Vega las mide antes de que cargue la fuente Inter y, sin margen, quedaban cortadas.
+    return alt.layer(derecha, barras).resolve_axis(y="independent").properties(
+        height=32 * len(top), padding={"left": 40, "top": 4, "bottom": 4, "right": 28},
+        usermeta={"embedOptions": {"actions": False}},
     ).configure_view(stroke=None)
 
 
@@ -224,8 +234,7 @@ def mostrar() -> None:
     estilo.seccion(f"Mayores diferencias de precio", f"top {PRODUCTOS_EN_GRAFICO}")
     with st.container(border=True):
         if (filtrado["diferencia"] > 0).any():
-            p = estilo.colores()
-            st.altair_chart(grafico_diferencias(filtrado, tiendas, colores, p["suave"], p["rejilla"]), width="stretch")
+            st.altair_chart(grafico_diferencias(filtrado, tiendas, colores), width="stretch")
         else:
             st.info("Ningún producto con los filtros actuales tiene diferencia de precio.")
 

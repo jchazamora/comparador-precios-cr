@@ -88,7 +88,20 @@ class CorreoRepetido(Exception):
 
 
 def url_conexion() -> str | None:
-    return os.environ.get("DATABASE_URL") or None
+    """DATABASE_URL de la variable de entorno (o .env) o, en Streamlit Cloud, de los secrets de la app.
+
+    Streamlit copia los secrets a variables de entorno, pero si se editan con la app ya
+    corriendo las borra y no las vuelve a crear hasta que alguien lee st.secrets; por eso
+    se leen directo.
+    """
+    if url := os.environ.get("DATABASE_URL"):
+        return url
+    try:
+        import streamlit as st
+
+        return st.secrets.get("DATABASE_URL") or None
+    except Exception:  # sin Streamlit, o sin archivo de secrets
+        return None
 
 
 @contextmanager

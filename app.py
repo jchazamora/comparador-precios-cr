@@ -4,6 +4,7 @@ Uso:
     streamlit run app.py
 """
 
+import logging
 from pathlib import Path
 
 import streamlit as st
@@ -14,9 +15,17 @@ from paginas import comparador, cuenta, favoritos, historial, lista
 
 LOGOS = Path(__file__).parent / "assets"
 
+
+@st.cache_resource(show_spinner=False)
+def _avisar_sin_base() -> None:
+    """Deja el aviso en el log del servidor una sola vez, no en cada recarga."""
+    logging.getLogger(__name__).warning("Falta DATABASE_URL: se ocultan las páginas de cuenta (ver .env.example).")
+
+
 st.set_page_config(page_title="Comparador de precios CR", page_icon="🛒", layout="wide")
 estilo.aplicar()
-st.logo(LOGOS / f"logo-{estilo.tema()}.svg", icon_image=LOGOS / "icono.svg", size="large")
+# Un solo logo para los dos temas: el nombre va en violeta, que se lee sobre fondo claro y oscuro.
+st.logo(LOGOS / "logo.svg", icon_image=LOGOS / "icono.svg", size="large")
 
 sesion.PAGINAS.update({
     "comparador": st.Page(comparador.mostrar, title="Comparador", icon="🛒", url_path="comparador", default=True),
@@ -26,11 +35,16 @@ sesion.PAGINAS.update({
     "cuenta": st.Page(cuenta.mostrar, title="Mi cuenta", icon="👤", url_path="cuenta"),
 })
 p = sesion.PAGINAS
-navegacion = st.navigation({
-    "Comparar": [p["comparador"]],
-    "Mis compras": [p["favoritos"], p["lista"], p["historial"]],
-    "Cuenta": [p["cuenta"]],
-})
+if sesion.hay_base():
+    navegacion = st.navigation({
+        "Comparar": [p["comparador"]],
+        "Mis compras": [p["favoritos"], p["lista"], p["historial"]],
+        "Cuenta": [p["cuenta"]],
+    })
+else:
+    # Sin base de datos no hay cuentas: el público ve solo el comparador y el aviso queda en el log.
+    _avisar_sin_base()
+    navegacion = st.navigation([p["comparador"]])
 
 with st.sidebar:
     usuario = sesion.usuario()

@@ -17,7 +17,6 @@ def _totales(df: pd.DataFrame, cantidades: dict[str, int], tiendas: list[str]) -
     combinada, _ = datos.mejor_combinacion(df, cantidades, tiendas)
     completas = resumen[resumen["faltan"] == 0]
     mejor = completas.index[0] if not completas.empty else None
-    colores = estilo.colores_tienda()
 
     tarjetas = []
     for tienda, fila in resumen.iterrows():
@@ -28,13 +27,13 @@ def _totales(df: pd.DataFrame, cantidades: dict[str, int], tiendas: list[str]) -
             nota = "No vende ninguno de estos productos"
         monto = estilo.precio(fila["total"]) if fila["disponibles"] else "—"
         tarjetas.append(
-            f'<div class="total{" mejor" if tienda == mejor else ""}" style="--t:{colores[tienda]}">'
+            f'<div class="total{" mejor" if tienda == mejor else ""}" style="--t:{estilo.color_tienda(tienda)}">'
             f'<div class="tienda">{escape(tienda)}</div><div class="monto">{monto}</div>'
             f'<div class="nota">{escape(nota)}</div></div>'
         )
     ahorro = completas["total"].iloc[0] - combinada if mejor else 0
     tarjetas.append(
-        f'<div class="total" style="--t:{estilo.colores()["primario"]}">'
+        f'<div class="total" style="--t:{estilo.color("primario")}">'
         f'<div class="tienda">Comprando cada producto donde es más barato</div>'
         f'<div class="monto">{estilo.precio(combinada)}</div>'
         f'<div class="nota">'

@@ -3,7 +3,7 @@
 import hashlib
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +12,8 @@ import streamlit as st
 import comparar_precios as cp
 
 TIENDAS = ["Walmart", "Masxmenos", "Automercado", "Pequeño Mundo"]
+# Costa Rica no cambia de hora en el año: UTC-6 fijo.
+HORA_CR = timezone(timedelta(hours=-6))
 
 
 def _carpeta() -> Path:
@@ -49,10 +51,15 @@ def cargar_catalogo() -> tuple[pd.DataFrame, dict]:
     return _leer_catalogo(carpeta, (carpeta / "comparacion.csv").stat().st_mtime)
 
 
+def en_hora_cr(fecha: datetime) -> datetime:
+    """La fecha en hora de Costa Rica, sea cual sea la zona del servidor (Streamlit Cloud usa UTC)."""
+    return fecha.astimezone(HORA_CR)
+
+
 def fecha_actualizacion(meta: dict) -> str:
     if "actualizado" not in meta:
         return "fecha desconocida"
-    return datetime.fromisoformat(meta["actualizado"]).astimezone().strftime("%d/%m/%Y %H:%M")
+    return en_hora_cr(datetime.fromisoformat(meta["actualizado"])).strftime("%d/%m/%Y %H:%M")
 
 
 def clave_tabla(prefijo: str, eans: pd.Series) -> str:

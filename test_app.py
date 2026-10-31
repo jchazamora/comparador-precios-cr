@@ -163,6 +163,26 @@ class TestAppCatalogo(_BaseApp):
         at.radio[0].set_value("Búsqueda en vivo").run()
         self.buscar.assert_called_with(("arroz", "frijoles", "leche"), 100)
 
+    def enlaces_de_cuenta(self, secrets=None):
+        with mock.patch.dict(os.environ, {"DATABASE_URL": ""}):
+            at = AppTest.from_file("app.py", default_timeout=30)
+            for clave, valor in (secrets or {}).items():
+                at.secrets[clave] = valor
+            at.run()
+        self.assertFalse(at.exception, at.exception)
+        textos = " ".join(str(getattr(e, "value", "")) for e in at.markdown) + " ".join(c.value for c in at.caption)
+        self.assertNotIn("Falta configurar", textos)
+        return [e for e in at.get("page_link")]
+
+    def test_sin_base_de_datos_no_ofrece_cuentas(self):
+        # El público no debe ver avisos de configuración: sin base, solo existe el comparador.
+        # (Secret vacío a propósito: si no, AppTest usaría el .streamlit/secrets.toml local.)
+        self.assertEqual(self.enlaces_de_cuenta({"DATABASE_URL": ""}), [])
+
+    def test_la_base_puede_venir_de_los_secrets(self):
+        # Como en Streamlit Cloud: DATABASE_URL en los secrets de la app y no en el entorno.
+        self.assertNotEqual(self.enlaces_de_cuenta({"DATABASE_URL": "postgresql://ejemplo"}), [])
+
 
 @unittest.skipIf(st is None, "Streamlit no está instalado")
 class TestAppTresTiendas(_BaseApp):

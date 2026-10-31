@@ -13,6 +13,7 @@ Uso:
 import os
 import unittest
 import uuid
+from unittest import mock
 from datetime import datetime, timedelta, timezone
 
 import psycopg
@@ -52,6 +53,31 @@ class TestValidaciones(unittest.TestCase):
         for args, mensaje in casos:
             with self.subTest(args=args), self.assertRaisesRegex(auth.ErrorDeRegistro, mensaje):
                 auth.validar_registro(*args)
+
+
+class TestUrlConexion(unittest.TestCase):
+    """En Streamlit Cloud la URL viene de los secrets de la app, no siempre como variable de entorno."""
+
+    def test_prefiere_la_variable_de_entorno(self):
+        with mock.patch.dict(os.environ, {"DATABASE_URL": "postgresql://entorno"}):
+            self.assertEqual(db.url_conexion(), "postgresql://entorno")
+
+    def test_lee_los_secrets_de_streamlit(self):
+        import streamlit
+
+        with mock.patch.dict(os.environ, {"DATABASE_URL": ""}), \
+                mock.patch.object(streamlit, "secrets", {"DATABASE_URL": "postgresql://secrets"}):
+            self.assertEqual(db.url_conexion(), "postgresql://secrets")
+
+    def test_sin_secrets_no_hay_base(self):
+        import streamlit
+
+        class SinArchivo:
+            def get(self, clave):
+                raise FileNotFoundError("No secrets found")
+
+        with mock.patch.dict(os.environ, {"DATABASE_URL": ""}), mock.patch.object(streamlit, "secrets", SinArchivo()):
+            self.assertIsNone(db.url_conexion())
 
 
 @unittest.skipIf(not URL, "Falta TEST_DATABASE_URL")

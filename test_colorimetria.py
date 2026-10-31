@@ -5,6 +5,7 @@ Uso:
 """
 
 import itertools
+import re
 import tomllib
 import unittest
 from pathlib import Path
@@ -63,6 +64,40 @@ class TestPaleta(unittest.TestCase):
                 for tienda, ct in colores["tiendas"].items():
                     with self.subTest(tema=tema, color=color, tienda=tienda):
                         self.assertGreaterEqual(c.separacion(color, ct), c.SEPARACION_NORMAL)
+
+
+try:
+    import estilo
+except ImportError:  # estilo necesita Streamlit
+    estilo = None
+
+
+@unittest.skipIf(estilo is None, "Streamlit no está instalado")
+class TestCssSigueElTemaReal(unittest.TestCase):
+    """El CSS no puede depender del tema que cree el servidor: si la persona cambia de tema sin
+    recargar, quedaban textos oscuros sobre tarjetas oscuras. Todo color de la paleta va en light-dark()."""
+
+    def sin_light_dark(self, css: str) -> str:
+        return re.sub(r"light-dark\((?:[^()]|\([^()]*\))*\)", "", css)
+
+    def test_ningun_color_de_la_paleta_queda_fijo(self):
+        resto = self.sin_light_dark(estilo.css())
+        colores = {v for tema in paleta.TEMAS.values() for v in tema.values() if isinstance(v, str) and v.startswith(("#", "rgba"))}
+        colores |= {v for tiendas in paleta.TIENDAS.values() for v in tiendas.values()}
+        for color in colores:
+            with self.subTest(color=color):
+                self.assertNotIn(color, resto)
+
+    def test_solo_quedan_fijos_el_blanco_y_la_sombra_de_la_portada(self):
+        resto = self.sin_light_dark(estilo.css())
+        self.assertEqual(set(re.findall(r"#[0-9a-fA-F]{3,8}\b", resto)), {"#fff"})
+        fijos = {re.sub(r",[\d.]+\)$", ")", x) for x in re.findall(r"rgba\([^)]*\)", resto)}
+        self.assertEqual(fijos, {"rgba(255,255,255)", "rgba(20,8,60)"})
+
+    def test_los_colores_en_linea_tambien_siguen_el_tema(self):
+        self.assertEqual(estilo.color_tienda("Walmart"),
+                         f"light-dark({paleta.TIENDAS['light']['Walmart']}, {paleta.TIENDAS['dark']['Walmart']})")
+        self.assertIn("light-dark(", estilo.insignia("Masxmenos"))
 
 
 class TestConfigDeStreamlit(unittest.TestCase):

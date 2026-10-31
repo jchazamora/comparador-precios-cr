@@ -1,7 +1,9 @@
 """Colores de la app, en un solo lugar. Los usan estilo.py, colorimetria.py y los tests.
 
 .streamlit/config.toml repite los colores base (Streamlit los lee de ahí) y
-test_colorimetria.py comprueba que coincidan. La auditoría completa, con las
+test_colorimetria.py comprueba que coincidan. El CSS de estilo.py escribe cada
+color como light-dark(claro, oscuro): el navegador elige según el tema que
+Streamlit está mostrando, aunque la persona lo cambie sin recargar la página. La auditoría completa, con las
 medidas de contraste y de daltonismo, está en docs/colorimetria.md.
 
 Reglas:
@@ -32,8 +34,9 @@ TEMAS = {
         "ahorro": "#006300", "ahorro_fondo": "#e7f5e7",
         # Gráficos
         "rejilla": "#ebeaf2",
-        "sombra": "0 1px 2px rgba(22,20,43,.05), 0 10px 28px -12px rgba(76,29,149,.18)",
-        "sombra_hover": "0 16px 36px -14px rgba(76,29,149,.32)",
+        # Colores de las sombras (cercana, lejana y al pasar el mouse); la forma está en estilo.py.
+        "sombra_cerca": "rgba(22,20,43,.05)", "sombra_lejos": "rgba(76,29,149,.18)",
+        "sombra_hover": "rgba(76,29,149,.32)",
         "tiendas": TIENDAS["light"],
     },
     "dark": {
@@ -45,8 +48,8 @@ TEMAS = {
         "chip_fondo": ("#ffffff", 0.94), "chip_texto": "#16142b",
         "ahorro": "#4ade80", "ahorro_fondo": "#13281d",
         "rejilla": "#262540",
-        "sombra": "0 1px 2px rgba(0,0,0,.35), 0 10px 28px -12px rgba(0,0,0,.6)",
-        "sombra_hover": "0 16px 36px -14px rgba(139,61,255,.35)",
+        "sombra_cerca": "rgba(0,0,0,.35)", "sombra_lejos": "rgba(0,0,0,.6)",
+        "sombra_hover": "rgba(139,61,255,.35)",
         "tiendas": TIENDAS["dark"],
     },
 }
