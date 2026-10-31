@@ -1,0 +1,9 @@
+[client]
+# La app es un comparador, no una fuente de datos: se oculta la descarga CSV
+# y la copia de las tablas. No impide ver los datos con las herramientas del navegador.
+disableDataExport = true
+# Sin menú de desarrollador (rerun, limpiar caché) para los visitantes.
+toolbarMode = "viewer"
+
+[browser]
+gatherUsageStats = false

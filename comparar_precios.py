@@ -88,6 +88,8 @@ class Producto:
     disponible: bool
     url: str
     categoria: str = ""
+    # "ean" si el código de barras viene de la tienda, "nombre" si se dedujo por marca y tamaño.
+    cruce: str = "ean"
 
     @property
     def en_oferta(self) -> bool:
@@ -231,16 +233,22 @@ def descargar_catalogo(tienda: str, categorias=CATEGORIAS_SUPERMERCADO, avisar=l
 
 
 def comparar(por_tienda: dict[str, list[Producto]]) -> list[dict]:
-    """Cruza productos por EAN y devuelve los que están en todas las tiendas."""
+    """Cruza productos por EAN y devuelve los que están en al menos dos tiendas.
+
+    Todas las filas tienen las mismas columnas; las de una tienda donde el producto
+    no está quedan vacías.
+    """
     indices = {
         tienda: {p.ean: p for p in productos if p.ean}
         for tienda, productos in por_tienda.items()
     }
-    comunes = set.intersection(*(set(i) for i in indices.values()))
+    todos = set().union(*(set(i) for i in indices.values())) if indices else set()
 
     filas = []
-    for ean in comunes:
-        ofertas = {tienda: indices[tienda][ean] for tienda in indices}
+    for ean in todos:
+        ofertas = {tienda: indice[ean] for tienda, indice in indices.items() if ean in indice}
+        if len(ofertas) < 2:
+            continue
         precios = {tienda: p.precio for tienda, p in ofertas.items()}
         precios_lista = {tienda: p.precio_lista for tienda, p in ofertas.items()}
         mas_barata = min(precios, key=precios.get)
@@ -249,19 +257,22 @@ def comparar(por_tienda: dict[str, list[Producto]]) -> list[dict]:
         tamano = next(filter(None, (extraer_tamano(p.nombre) for p in ofertas.values())), None)
         cantidad, unidad = tamano or (None, "")
 
-        primera = next(iter(ofertas.values()))
-        fila = {"ean": ean, "nombre": primera.nombre, "categoria": primera.categoria}
-        for t, p in ofertas.items():
-            clave = t.lower()
-            fila[f"precio_{clave}"] = p.precio
-            fila[f"precio_lista_{clave}"] = p.precio_lista
-            fila[f"oferta_{clave}"] = "Sí" if p.en_oferta else "No"
+        # Nombre y categoría de la primera tienda con EAN propio (las cruzadas por nombre van al final).
+        primera = next(p for p in sorted(ofertas.values(), key=lambda p: p.cruce != "ean"))
+        fila = {"ean": ean, "nombre": primera.nombre, "categoria": primera.categoria,
+                "tiendas": len(ofertas)}
+        for t in indices:
+            p, clave = ofertas.get(t), t.lower()
+            fila[f"precio_{clave}"] = p.precio if p else None
+            fila[f"precio_lista_{clave}"] = p.precio_lista if p else None
+            fila[f"oferta_{clave}"] = ("Sí" if p.en_oferta else "No") if p else ""
         fila["cantidad"] = cantidad
         fila["unidad"] = unidad
-        for t, p in ofertas.items():
+        for t in indices:
+            p = ofertas.get(t)
             # Precio por kg o por L, según la columna "unidad".
             fila[f"precio_por_unidad_{t.lower()}"] = (
-                round(p.precio / cantidad, 1) if cantidad else None
+                round(p.precio / cantidad, 1) if p and cantidad else None
             )
         fila["mas_barata"] = mas_barata if diferencia > 0 else "Igual"
         fila["diferencia"] = diferencia
@@ -269,8 +280,10 @@ def comparar(por_tienda: dict[str, list[Producto]]) -> list[dict]:
         # Diferencia sin ofertas: separa promociones temporales de diferencias de fondo.
         fila["diferencia_lista"] = max(precios_lista.values()) - min(precios_lista.values())
         fila["sospechoso"] = max(precios.values()) >= RAZON_SOSPECHOSA * min(precios.values())
-        for t, p in ofertas.items():
-            fila[f"url_{t.lower()}"] = p.url
+        # Qué tiendas entraron por parecido de nombre y no por código de barras.
+        fila["cruce_por_nombre"] = ", ".join(t for t, p in ofertas.items() if p.cruce == "nombre")
+        for t in indices:
+            fila[f"url_{t.lower()}"] = ofertas[t].url if t in ofertas else ""
         filas.append(fila)
     return sorted(filas, key=lambda f: f["diferencia"], reverse=True)
 

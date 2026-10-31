@@ -70,7 +70,7 @@ class TestAppEnVivo(_BaseApp):
         at = self.correr()
         metricas = {m.label: m.value for m in at.metric}
         self.assertEqual(metricas, {
-            "En ambas tiendas": "3",
+            "Productos comparados": "3",
             "Walmart más barato": "2",
             "Masxmenos más barato": "0",
             "Mismo precio": "1",
@@ -157,6 +157,61 @@ class TestAppCatalogo(_BaseApp):
         at = self.correr()
         at.radio[0].set_value("Búsqueda en vivo").run()
         self.buscar.assert_called_with(("arroz", "frijoles", "leche"), 100)
+
+
+@unittest.skipIf(st is None, "Streamlit no está instalado")
+class TestAppTresTiendas(_BaseApp):
+    """Catálogo con Automercado, que solo tiene algunos productos (cruzados por nombre)."""
+
+    def setUp(self):
+        super().setUp()
+        por_tienda, _ = busqueda_falsa(None, None)
+        por_tienda["Walmart"].append(producto("Walmart", "4", 2000, "Café Britt - 340 g"))
+        automercado = [
+            producto("Automercado", "1", 5000, "Arroz Indiana Bolsa 10 Kg"),
+            producto("Automercado", "3", 900, "Leche Dos Pinos Envase 1 L"),
+            producto("Automercado", "4", 2500, "Café Britt Bolsa 340 G"),
+        ]
+        for p in automercado:
+            p.cruce = "nombre"
+        por_tienda["Automercado"] = automercado
+        filas = cp.comparar(por_tienda)
+        with open(self.datos / "comparacion.csv", "w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=list(filas[0]))
+            writer.writeheader()
+            writer.writerows(filas)
+
+    def metricas(self, at):
+        return {m.label: m.value for m in at.metric}
+
+    def test_metricas_de_las_tres_tiendas(self):
+        at = self.correr()
+        # 1 y 3 más baratos en Automercado; 2 (oferta) y 4 en Walmart.
+        self.assertEqual(self.metricas(at), {
+            "Productos comparados": "4",
+            "Walmart más barato": "2",
+            "Masxmenos más barato": "0",
+            "Automercado más barato": "2",
+            "Mismo precio": "0",
+        })
+
+    def test_quitar_una_tienda_recalcula(self):
+        at = self.correr()
+        at.multiselect[0].unselect("Automercado").run()
+        # El café solo estaba en Walmart y Automercado: sin Automercado ya no se compara.
+        self.assertEqual(self.metricas(at), {
+            "Productos comparados": "3",
+            "Walmart más barato": "2",
+            "Masxmenos más barato": "0",
+            "Mismo precio": "1",
+        })
+
+    def test_marca_los_cruces_por_nombre(self):
+        at = self.correr()
+        tabla = at.dataframe[0].value.set_index("ean")
+        self.assertEqual(tabla.loc["1", "cruce_por_nombre"], "Automercado")
+        self.assertEqual(tabla.loc["2", "cruce_por_nombre"], "")
+        self.assertTrue(any("no publica códigos de barras" in c.value for c in at.caption))
 
 
 if __name__ == "__main__":

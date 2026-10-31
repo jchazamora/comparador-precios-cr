@@ -1,6 +1,6 @@
 # Comparador de precios de supermercados de Costa Rica
 
-Compara los precios de **Walmart** y **Masxmenos**: descarga todo su catálogo de supermercado (más de 13 000 productos en común), cruza los que son el mismo artículo y muestra cuál tienda lo vende más barato. Se puede usar como **app web en Streamlit** (métricas, gráfico de mayores diferencias, tabla filtrable por categoría con enlaces a cada tienda y descarga en CSV) o como script de consola que genera un CSV listo para Excel.
+Compara los precios de **Walmart**, **Masxmenos** y **Automercado**: descarga su catálogo de supermercado, cruza los productos que son el mismo artículo y muestra cuál tienda lo vende más barato. Se puede usar como **app web en Streamlit** (métricas, gráfico de mayores diferencias, tabla filtrable por categoría con enlaces a cada tienda) o como script de consola que genera un CSV listo para Excel.
 
 ```
 Producto                                          Walmart   Masxmenos     Dif.  Más barata
@@ -32,22 +32,26 @@ streamlit run app.py
 
 Se abre en `http://localhost:8501`. Tiene dos modos de datos:
 
-- **Catálogo completo** (por defecto): lee `data/comparacion.csv`, así que carga al instante. Se filtra por categoría, por nombre, por productos con precio distinto, por diferencias que no se deben solo a una oferta y por diferencias sospechosas.
-- **Búsqueda en vivo**: se escriben productos separados por coma y se consultan las tiendas en ese momento. Los resultados se guardan en caché durante una hora.
+- **Catálogo completo** (por defecto): lee `data/comparacion.csv`, así que carga al instante. Se eligen las tiendas a comparar y se filtra por categoría, por nombre, por productos con precio distinto, por diferencias que no se deben solo a una oferta y por diferencias sospechosas.
+- **Búsqueda en vivo**: se escriben productos separados por coma y se consultan Walmart y Masxmenos en ese momento. Los resultados se guardan en caché durante una hora. Automercado no está en este modo porque se lee con un navegador automático, que tarda demasiado para una consulta en vivo.
 
 En ambos modos se muestra:
 
-- **Métricas**: cuántos productos están en ambas tiendas y en cuál sale más barato cada uno.
-- **Gráfico**: los 15 productos con mayor diferencia porcentual. Las barras a la derecha son más baratas en Walmart y las de la izquierda en Masxmenos.
-- **Tabla**: precios, ofertas, precio por kg/L y enlaces a cada tienda, con botón de descarga en CSV.
+- **Métricas**: cuántos productos se comparan (están en al menos dos de las tiendas elegidas) y en cuál sale más barato cada uno.
+- **Gráfico**: los 15 productos con mayor diferencia porcentual, del color de la tienda más barata.
+- **Tabla**: precios, ofertas, precio por kg/L y enlaces a cada tienda. La app es un comparador, no una fuente de datos, así que la descarga y la copia de las tablas están desactivadas (`client.disableDataExport` en [`.streamlit/config.toml`](.streamlit/config.toml)).
 
 ### Actualizar el catálogo
 
 ```bash
+pip install playwright           # solo para actualizar el catálogo; la app no lo necesita
+playwright install chromium
 python actualizar_catalogo.py
 ```
 
-Recorre las 13 categorías de supermercado de ambas tiendas (abarrotes, lácteos, bebidas, limpieza, farmacia, etc.) y guarda `data/comparacion.csv` y `data/meta.json`. Deja fuera ropa, hogar, electrónica, juguetes, deportes y autos. Tarda unos 13 minutos (cerca de 600 páginas por tienda, con pausas para no saturar las APIs). La última corrida bajó 16 902 productos de Walmart y 14 404 de Masxmenos, con 13 211 en común.
+Recorre las categorías de supermercado de las tres tiendas (abarrotes, lácteos, bebidas, limpieza, farmacia, etc.) y guarda `data/comparacion.csv` y `data/meta.json`. Deja fuera ropa, hogar, electrónica, juguetes, deportes y autos. Cada tienda se descarga en su propio hilo, con pausas para no saturar los sitios. La descarga cruda queda en `cache/` (fuera de git), y `--usar-cache` recalcula la comparación sin volver a descargar. Con `--sin-automercado` solo usa las tiendas VTEX, no necesita Playwright y tarda unos 13 minutos.
+
+La última corrida tardó 32 minutos (Automercado es lo más lento) y bajó 16 814 productos de Walmart, 14 348 de Masxmenos y 14 315 de Automercado. Se compararon 13 324 productos, 1 222 de ellos en las tres tiendas. De Automercado se cruzaron 1 407 productos por nombre: en una revisión manual de 40 al azar, 38 eran el mismo producto.
 
 ### Consola
 
@@ -69,10 +73,11 @@ python comparar_precios.py arroz frijoles leche --max 100 --csv precios.csv
 python -m unittest -v
 ```
 
-Ningún test hace peticiones reales: la API de VTEX se simula con `unittest.mock`, así que no dependen de la red ni de los precios del día.
+Ningún test hace peticiones reales ni abre un navegador: la API de VTEX se simula con `unittest.mock`, así que no dependen de la red ni de los precios del día.
 
 - [`test_comparar_precios.py`](test_comparar_precios.py) tiene 45 tests de la lógica. No necesita dependencias externas.
-- [`test_app.py`](test_app.py) tiene 11 tests de la app con `streamlit.testing.v1.AppTest`: los dos modos de datos, métricas, filtros (incluido el de categoría) y el formulario de búsqueda. Usan una carpeta de datos temporal (variable `COMPARADOR_DATOS`) y, si Streamlit no está instalado, se saltan.
+- [`test_automercado.py`](test_automercado.py) tiene 21 tests de la lectura de tarjetas de Automercado, del cruce por nombre (casos que deben cruzar y casos ambiguos o contradictorios que no: "deslactosada", "sin azúcar", la edad de un licor) y de la comparación con tres tiendas.
+- [`test_app.py`](test_app.py) tiene 14 tests de la app con `streamlit.testing.v1.AppTest`: los dos modos de datos, métricas con dos y tres tiendas, el selector de tiendas, filtros y el formulario de búsqueda. Usan una carpeta de datos temporal (variable `COMPARADOR_DATOS`) y, si Streamlit no está instalado, se saltan.
 
 La lógica cubre:
 
@@ -88,7 +93,9 @@ La lógica cubre:
 
 ## Cómo funciona
 
-Las dos tiendas usan la plataforma de e-commerce **VTEX**, que expone una API pública de catálogo:
+### Walmart y Masxmenos
+
+Las dos usan la plataforma de e-commerce **VTEX**, que expone una API pública de catálogo:
 
 ```
 GET https://www.walmart.co.cr/api/catalog_system/pub/products/search?ft=arroz&_from=0&_to=49
@@ -99,11 +106,27 @@ GET https://www.walmart.co.cr/api/catalog_system/pub/products/search?ft=arroz&_f
 3. **Cruce por EAN.** Dos productos son el mismo si tienen el mismo código de barras. Comparar por nombre no funciona porque cada tienda lo escribe distinto (`500gr`, `- 500 g`, `500grea`).
 4. **Tamaño y precio por kg/L.** Se lee del nombre con una expresión regular. Así se pueden comparar presentaciones distintas, por ejemplo una bolsa de 4 kg con una de 10 kg.
 
+### Automercado
+
+Automercado no usa VTEX y su catálogo no tiene una API pública: la página carga los productos desde un buscador interno que usa llaves de acceso propias del sitio. En vez de usar esas llaves, [`automercado.py`](automercado.py) abre el sitio con **Playwright** y lo recorre como un visitante:
+
+1. **Navegación.** Entra a cada categoría con un clic en su ícono (abrir la URL directo redirige a la portada) y recorre sus subcategorías, porque el sitio no muestra más de 1000 productos por lista. En cada una pulsa "Ver más" hasta el final, con pausas y sin descargar imágenes ni fuentes.
+2. **Lectura.** De cada tarjeta toma el nombre, el precio actual y el anterior (si está en promoción) y la presentación ("lata 184 g"), que completa el nombre cuando este no trae el tamaño.
+3. **Cruce por nombre.** Automercado no publica el código de barras, así que cada producto se empareja con el EAN de su equivalente en Walmart o Masxmenos con reglas estrictas:
+   - la **marca** del producto de referencia debe aparecer en el nombre;
+   - el **tamaño** debe coincidir (±2%);
+   - el resto del nombre debe parecerse (similitud de Jaccard ≥ 0,5, sin plurales, tamaños ni palabras de relleno), y ≥ 0,6 si cada nombre tiene palabras que el otro no ("con leche" frente a "con almendra");
+   - el mejor candidato debe ganarle al segundo por al menos 0,15. Si es ambiguo, no se cruza.
+
+   Se prefiere perder coincidencias antes que emparejar productos distintos. Las filas cruzadas así se marcan en la columna `cruce_por_nombre`.
+
 ## Columnas del CSV
 
 | Columna | Significado |
 |---|---|
 | `ean` | Código de barras, la clave del cruce. |
+| `tiendas` | En cuántas tiendas está el producto (al menos 2). Las columnas de una tienda donde no está quedan vacías. |
+| `cruce_por_nombre` | Tiendas que se emparejaron por marca, tamaño y nombre en vez de por EAN (hoy, Automercado). |
 | `precio_<tienda>` | Precio actual (`Price`). |
 | `precio_lista_<tienda>` | Precio regular sin descuento (`ListPrice`). |
 | `oferta_<tienda>` | `Sí` si el precio actual es menor que el de lista. |
@@ -129,14 +152,16 @@ GET https://www.walmart.co.cr/api/catalog_system/pub/products/search?ft=arroz&_f
 
 ## Limitaciones
 
-- Solo compara productos que están en **las dos** tiendas con el mismo EAN.
+- Solo compara productos que están en al menos dos tiendas. En Walmart y Masxmenos el cruce es por EAN. En Automercado es por nombre: encuentra menos coincidencias, puede tener algún error y deja fuera sus marcas propias (Auto Selección), que no existen en las otras tiendas.
+- Los precios de Automercado son los de la sucursal que el sitio muestra por defecto (AM Moravia). Otras sucursales pueden tener otros precios.
+- El lector de Automercado depende del diseño de su sitio: si lo cambian, hay que ajustarlo.
 - El tamaño depende de cómo esté escrito el nombre. Si el formato es raro, el precio por kg/L queda vacío.
 - Los precios son los de la tienda en línea y pueden no coincidir con los de la tienda física.
 - No guarda historial: cada corrida es una foto del momento. El catálogo de la app tiene la fecha de su última actualización.
 
 ## Posibles mejoras
 
-- Agregar más cadenas que usen VTEX o que tengan otra API (por ejemplo, PriceSmart o Automercado).
+- Agregar más cadenas que usen VTEX o tengan otra API pública y cuyos términos lo permitan.
 - Guardar cada corrida en SQLite para ver cómo cambian los precios en el tiempo.
 - Actualizar el catálogo automáticamente cada día con GitHub Actions.
 - Publicar la app en Streamlit Community Cloud.

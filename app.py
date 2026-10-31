@@ -15,10 +15,11 @@ import streamlit as st
 
 import comparar_precios as cp
 
+TIENDAS = ["Walmart", "Masxmenos", "Automercado"]
 # Colores por tienda (paleta categórica validada para daltonismo), con su paso para tema oscuro.
 COLORES = {
-    "light": {"Walmart": "#2a78d6", "Masxmenos": "#eb6834"},
-    "dark": {"Walmart": "#3987e5", "Masxmenos": "#d95926"},
+    "light": {"Walmart": "#2a78d6", "Masxmenos": "#eb6834", "Automercado": "#1baf7a"},
+    "dark": {"Walmart": "#3987e5", "Masxmenos": "#d95926", "Automercado": "#199e70"},
 }
 TERMINOS_INICIALES = "arroz, frijoles, leche"
 PRODUCTOS_EN_GRAFICO = 15
@@ -40,18 +41,38 @@ def cargar(terminos: tuple[str, ...], maximo: int) -> tuple[pd.DataFrame, list[s
 @st.cache_data(show_spinner=False)
 def cargar_catalogo(_modificado: float) -> tuple[pd.DataFrame, dict]:
     """Lee la comparación guardada por actualizar_catalogo.py; se recarga si el archivo cambia."""
-    # El EAN como texto para no perder ceros a la izquierda.
-    df = pd.read_csv(ARCHIVO_CATALOGO, dtype={"ean": str, "unidad": str}, keep_default_na=False,
-                     na_values={"cantidad": "", "precio_por_unidad_walmart": "", "precio_por_unidad_masxmenos": ""})
+    # Columnas de texto (y el EAN, para no perder ceros a la izquierda); si vienen vacías, como "".
+    columnas = pd.read_csv(ARCHIVO_CATALOGO, nrows=0).columns
+    texto = [c for c in columnas if c in ("ean", "categoria", "unidad", "cruce_por_nombre")
+             or c.startswith(("oferta_", "url_"))]
+    df = pd.read_csv(ARCHIVO_CATALOGO, dtype=dict.fromkeys(texto, str))
+    df[texto] = df[texto].fillna("")
     meta = json.loads(ARCHIVO_META.read_text(encoding="utf-8")) if ARCHIVO_META.exists() else {}
     return df, meta
 
 
-def grafico_diferencias(df: pd.DataFrame, colores: dict[str, str]) -> alt.Chart:
-    """Barras divergentes: a la derecha gana Walmart, a la izquierda Masxmenos."""
+def tiendas_en(df: pd.DataFrame) -> list[str]:
+    return [t for t in TIENDAS if f"precio_{t.lower()}" in df.columns]
+
+
+def recalcular(df: pd.DataFrame, tiendas: list[str]) -> pd.DataFrame:
+    """Vuelve a calcular la comparación usando solo las tiendas elegidas."""
+    precios = df[[f"precio_{t.lower()}" for t in tiendas]].set_axis(tiendas, axis=1)
+    listas = df[[f"precio_lista_{t.lower()}" for t in tiendas]].set_axis(tiendas, axis=1)
+    df = df[precios.notna().sum(axis=1) >= 2].copy()
+    precios, listas = precios.loc[df.index], listas.loc[df.index]
+    maximo, minimo = precios.max(axis=1), precios.min(axis=1)
+    df["diferencia"] = maximo - minimo
+    df["diferencia_pct"] = (100 * df["diferencia"] / maximo).round(1)
+    df["mas_barata"] = precios.idxmin(axis=1).where(df["diferencia"] > 0, "Igual")
+    df["diferencia_lista"] = listas.max(axis=1) - listas.min(axis=1)
+    df["sospechoso"] = maximo >= cp.RAZON_SOSPECHOSA * minimo
+    return df
+
+
+def grafico_diferencias(df: pd.DataFrame, tiendas: list[str], colores: dict[str, str]) -> alt.Chart:
+    """Barras con la diferencia porcentual, del color de la tienda más barata."""
     top = df[df["diferencia"] > 0].nlargest(PRODUCTOS_EN_GRAFICO, "diferencia_pct").copy()
-    top["signo"] = top["mas_barata"].map({"Walmart": 1, "Masxmenos": -1})
-    top["dif_signada"] = top["diferencia_pct"] * top["signo"]
     top["etiqueta"] = top["diferencia_pct"].map(lambda v: f"{v:.0f}%")
 
     # Orden explícito: con capas, el sort por campo de Vega-Lite no se respeta.
@@ -59,45 +80,65 @@ def grafico_diferencias(df: pd.DataFrame, colores: dict[str, str]) -> alt.Chart:
     base = alt.Chart(top).encode(
         y=alt.Y("nombre:N", sort=orden, title=None,
                 axis=alt.Axis(labelLimit=320, labelOverlap=False, ticks=False, domain=False)),
+        x=alt.X("diferencia_pct:Q", title="% más barato que la tienda más cara",
+                scale=alt.Scale(domain=[0, float(top["diferencia_pct"].max()) * 1.12]),
+                axis=alt.Axis(labelExpr="datum.value + '%'", grid=True, gridOpacity=0.3)),
     )
-    # Eje simétrico: el 0 queda al centro aunque todas las barras caigan de un lado, con aire para las etiquetas.
-    limite = float(top["diferencia_pct"].max()) * 1.15
     barras = base.mark_bar(cornerRadiusEnd=4, height={"band": 0.7}).encode(
-        x=alt.X("dif_signada:Q", title="← Más barato en Masxmenos  ·  Más barato en Walmart →  (% de diferencia)",
-                scale=alt.Scale(domain=[-limite, limite]),
-                axis=alt.Axis(labelExpr="abs(datum.value) + '%'", grid=True, gridOpacity=0.3)),
         color=alt.Color("mas_barata:N", title="Más barato en",
-                        scale=alt.Scale(domain=list(colores), range=list(colores.values())),
+                        scale=alt.Scale(domain=tiendas, range=[colores[t] for t in tiendas]),
                         legend=alt.Legend(orient="top")),
-        tooltip=[
-            alt.Tooltip("nombre:N", title="Producto"),
-            alt.Tooltip("precio_walmart:Q", title="Walmart ₡", format=",.0f"),
-            alt.Tooltip("precio_masxmenos:Q", title="Masxmenos ₡", format=",.0f"),
-            alt.Tooltip("diferencia:Q", title="Diferencia ₡", format=",.0f"),
-            alt.Tooltip("diferencia_pct:Q", title="Diferencia %", format=".1f"),
-            alt.Tooltip("mas_barata:N", title="Más barato en"),
-        ],
+        tooltip=[alt.Tooltip("nombre:N", title="Producto")]
+        + [alt.Tooltip(f"precio_{t.lower()}:Q", title=f"{t} ₡", format=",.0f") for t in tiendas]
+        + [alt.Tooltip("diferencia:Q", title="Diferencia ₡", format=",.0f"),
+           alt.Tooltip("mas_barata:N", title="Más barato en")],
     )
-    # Etiqueta al final de cada barra, hacia afuera según el lado.
-    derecha = base.mark_text(fontSize=11, color="gray", align="left", dx=4).encode(
-        x="dif_signada:Q", text="etiqueta:N",
-    ).transform_filter("datum.dif_signada > 0")
-    izquierda = base.mark_text(fontSize=11, color="gray", align="right", dx=-4).encode(
-        x="dif_signada:Q", text="etiqueta:N",
-    ).transform_filter("datum.dif_signada < 0")
-    regla_cero = alt.Chart(pd.DataFrame({"x": [0]})).mark_rule(color="gray", strokeWidth=1).encode(x="x:Q")
-    return (barras + derecha + izquierda + regla_cero).properties(height=30 * len(top))
+    etiquetas = base.mark_text(fontSize=11, color="gray", align="left", dx=4).encode(text="etiqueta:N")
+    # Sin el menú de Vega (exportar, ver código fuente con los datos).
+    return (barras + etiquetas).properties(
+        height=30 * len(top), usermeta={"embedOptions": {"actions": False}},
+    )
 
 
-def tabla(df: pd.DataFrame) -> pd.DataFrame:
-    vista = df[[
-        "nombre", "categoria", "precio_walmart", "precio_masxmenos", "mas_barata", "diferencia", "diferencia_pct",
-        "oferta_walmart", "oferta_masxmenos", "unidad", "precio_por_unidad_walmart",
-        "precio_por_unidad_masxmenos", "url_walmart", "url_masxmenos", "ean",
-    ]].copy()
-    for tienda in ("walmart", "masxmenos"):
-        vista[f"oferta_{tienda}"] = vista[f"oferta_{tienda}"] == "Sí"
+def tabla(df: pd.DataFrame, tiendas: list[str]) -> pd.DataFrame:
+    claves = [t.lower() for t in tiendas]
+    columnas = (
+        ["nombre", "categoria"] + [f"precio_{c}" for c in claves]
+        + ["mas_barata", "diferencia", "diferencia_pct"] + [f"oferta_{c}" for c in claves]
+        + ["unidad"] + [f"precio_por_unidad_{c}" for c in claves]
+        + (["cruce_por_nombre"] if "cruce_por_nombre" in df else [])
+        + [f"url_{c}" for c in claves] + ["ean"]
+    )
+    vista = df[columnas].copy()
+    for c in claves:
+        vista[f"oferta_{c}"] = vista[f"oferta_{c}"] == "Sí"
+        vista[f"url_{c}"] = vista[f"url_{c}"].replace("", None)
     return vista
+
+
+def configuracion_tabla(tiendas: list[str], maximo_pct: float) -> dict:
+    config = {
+        "nombre": st.column_config.TextColumn("Producto", width="large"),
+        "categoria": st.column_config.TextColumn("Categoría"),
+        "mas_barata": st.column_config.TextColumn("Más barato en"),
+        "diferencia": st.column_config.NumberColumn("Dif. ₡", format="₡%,.0f"),
+        "diferencia_pct": st.column_config.ProgressColumn(
+            "Dif. %", format="%.1f%%", min_value=0, max_value=max(50.0, maximo_pct),
+        ),
+        "unidad": st.column_config.TextColumn("Unidad", help="kg o L, leído del nombre del producto"),
+        "cruce_por_nombre": st.column_config.TextColumn(
+            "Cruce por nombre",
+            help="Tiendas que no publican código de barras: el producto se emparejó por marca, tamaño y nombre.",
+        ),
+        "ean": st.column_config.TextColumn("EAN"),
+    }
+    for t in tiendas:
+        c = t.lower()
+        config[f"precio_{c}"] = st.column_config.NumberColumn(t, format="₡%,.0f")
+        config[f"oferta_{c}"] = st.column_config.CheckboxColumn(f"Oferta {t}")
+        config[f"precio_por_unidad_{c}"] = st.column_config.NumberColumn(f"{t} ₡/unidad", format="₡%,.0f")
+        config[f"url_{c}"] = st.column_config.LinkColumn(f"Ver en {t}", display_text="Abrir")
+    return config
 
 
 def main() -> None:
@@ -111,7 +152,8 @@ def main() -> None:
     with st.sidebar:
         modo = st.radio("Datos", [MODO_CATALOGO, MODO_EN_VIVO], horizontal=True,
                         index=0 if hay_catalogo else 1, disabled=not hay_catalogo,
-                        help="El catálogo completo se descarga con actualizar_catalogo.py.")
+                        help="El catálogo completo se descarga con actualizar_catalogo.py. "
+                             "La búsqueda en vivo solo consulta Walmart y Masxmenos.")
         if modo == MODO_EN_VIVO:
             with st.form("busqueda"):
                 st.subheader("Búsqueda")
@@ -124,7 +166,7 @@ def main() -> None:
         fecha = datetime.fromisoformat(meta["actualizado"]).astimezone().strftime("%d/%m/%Y %H:%M") \
             if "actualizado" in meta else "fecha desconocida"
         totales = " · ".join(f"{t}: {n:,}" for t, n in meta.get("productos_por_tienda", {}).items())
-        st.caption(f"Walmart vs. Masxmenos, Costa Rica · catálogo de supermercado actualizado el {fecha}"
+        st.caption(f"{' vs. '.join(tiendas_en(df))}, Costa Rica · catálogo de supermercado actualizado el {fecha}"
                    + (f" ({totales} productos descargados)" if totales else ""))
         if meta.get("saltados"):
             st.warning(f"La última descarga quedó incompleta: {len(meta['saltados'])} página(s) fallaron. "
@@ -145,6 +187,14 @@ def main() -> None:
 
     with st.sidebar:
         st.subheader("Filtros")
+        disponibles = tiendas_en(df)
+        tiendas = disponibles
+        if len(disponibles) > 2:
+            tiendas = st.multiselect("Tiendas a comparar", disponibles, default=disponibles,
+                                     help="Un producto se compara si está en al menos dos de las tiendas elegidas.")
+            if len(tiendas) < 2:
+                st.info("Elige al menos dos tiendas.")
+                return
         categorias = sorted(c for c in df["categoria"].unique() if c)
         if categorias:
             elegidas = st.multiselect("Categorías", categorias, placeholder="Todas")
@@ -158,11 +208,13 @@ def main() -> None:
         )
         sin_sospechosos = st.checkbox(
             "Ocultar diferencias sospechosas", value=True,
-            help=f"Una tienda cobra {cp.RAZON_SOSPECHOSA} veces o más por el mismo código de barras. "
+            help=f"Una tienda cobra {cp.RAZON_SOSPECHOSA} veces o más por el mismo producto. "
                  "Casi siempre es un error de datos: una vende la unidad y la otra el paquete.",
         )
+
+    df = recalcular(df, tiendas)
     # Es un filtro de calidad de datos, así que también afecta las métricas.
-    if sin_sospechosos and "sospechoso" in df:
+    if sin_sospechosos:
         df = df[~df["sospechoso"]]
 
     filtrado = df
@@ -176,54 +228,34 @@ def main() -> None:
     # Las métricas resumen las categorías elegidas; el gráfico y la tabla siguen además los demás filtros.
     conteo = df["mas_barata"].value_counts()
     con_dif = df[df["diferencia"] > 0]
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("En ambas tiendas", len(df))
-    c2.metric("Walmart más barato", int(conteo.get("Walmart", 0)))
-    c3.metric("Masxmenos más barato", int(conteo.get("Masxmenos", 0)))
-    c4.metric("Mismo precio", int(conteo.get("Igual", 0)))
+    columnas = st.columns(len(tiendas) + 2)
+    columnas[0].metric("Productos comparados", len(df))
+    for col, t in zip(columnas[1:], tiendas):
+        col.metric(f"{t} más barato", int(conteo.get(t, 0)))
+    columnas[-1].metric("Mismo precio", int(conteo.get("Igual", 0)))
     if not con_dif.empty:
         st.caption(
             f"Cuando hay diferencia, es en promedio de **{con_dif['diferencia_pct'].mean():.1f}%** "
             f"(₡{con_dif['diferencia'].mean():,.0f}). "
             f"{int((con_dif['diferencia_lista'] == 0).sum())} de esas diferencias se deben solo a una oferta."
         )
+    if "cruce_por_nombre" in df and (df["cruce_por_nombre"] != "").any():
+        st.caption("Automercado no publica códigos de barras: sus productos se emparejan por marca, tamaño "
+                   "y nombre, y pueden tener algún error. La columna *Cruce por nombre* los identifica.")
 
     st.subheader(f"Mayores diferencias de precio (top {PRODUCTOS_EN_GRAFICO})")
     if (filtrado["diferencia"] > 0).any():
-        st.altair_chart(grafico_diferencias(filtrado, colores), width="stretch")
+        st.altair_chart(grafico_diferencias(filtrado, tiendas, colores), width="stretch")
     else:
         st.info("Ningún producto con los filtros actuales tiene diferencia de precio.")
 
     st.subheader(f"Todos los productos ({len(filtrado)})")
     st.dataframe(
-        tabla(filtrado),
+        tabla(filtrado, tiendas),
         hide_index=True,
         width="stretch",
-        column_config={
-            "nombre": st.column_config.TextColumn("Producto", width="large"),
-            "categoria": st.column_config.TextColumn("Categoría"),
-            "precio_walmart": st.column_config.NumberColumn("Walmart", format="₡%,.0f"),
-            "precio_masxmenos": st.column_config.NumberColumn("Masxmenos", format="₡%,.0f"),
-            "mas_barata": st.column_config.TextColumn("Más barato en"),
-            "diferencia": st.column_config.NumberColumn("Dif. ₡", format="₡%,.0f"),
-            "diferencia_pct": st.column_config.ProgressColumn(
-                "Dif. %", format="%.1f%%", min_value=0, max_value=max(50.0, float(df["diferencia_pct"].max())),
-            ),
-            "oferta_walmart": st.column_config.CheckboxColumn("Oferta Walmart"),
-            "oferta_masxmenos": st.column_config.CheckboxColumn("Oferta Masxmenos"),
-            "unidad": st.column_config.TextColumn("Unidad", help="kg o L, leído del nombre del producto"),
-            "precio_por_unidad_walmart": st.column_config.NumberColumn("Walmart ₡/unidad", format="₡%,.0f"),
-            "precio_por_unidad_masxmenos": st.column_config.NumberColumn("Masxmenos ₡/unidad", format="₡%,.0f"),
-            "url_walmart": st.column_config.LinkColumn("Ver en Walmart", display_text="Abrir"),
-            "url_masxmenos": st.column_config.LinkColumn("Ver en Masxmenos", display_text="Abrir"),
-            "ean": st.column_config.TextColumn("EAN"),
-        },
-    )
-    st.download_button(
-        "Descargar CSV",
-        filtrado.to_csv(index=False).encode("utf-8-sig"),
-        file_name="comparacion_precios.csv",
-        mime="text/csv",
+        placeholder="—",  # tienda donde el producto no está
+        column_config=configuracion_tabla(tiendas, float(df["diferencia_pct"].max())),
     )
 
 
