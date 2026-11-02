@@ -1,0 +1,52 @@
+name: Actualizar precios
+
+on:
+  schedule:
+    - cron: "0 8 * * *"  # 02:00 en Costa Rica (UTC-6), cuando casi nadie usa los sitios
+  workflow_dispatch:      # también se puede lanzar a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-precios
+  cancel-in-progress: false
+
+jobs:
+  actualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt playwright
+          playwright install --with-deps chromium
+
+      - name: Verificar el secret DATABASE_URL
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: test -n "$DATABASE_URL" || { echo "::error::Falta el secret DATABASE_URL del repositorio."; exit 1; }
+
+      - name: Descargar precios y guardar la corrida
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python actualizar_catalogo.py
+
+      - name: Subir data/ si cambió
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/comparacion.csv data/meta.json
+          if git diff --cached --quiet; then
+            echo "Sin cambios en data/."
+          else
+            git commit -m "Actualizar precios $(date -u +%d/%m/%Y)"
+            git push
+          fi
