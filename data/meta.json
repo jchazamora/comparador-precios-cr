@@ -1,14 +1,14 @@
 {
-  "actualizado": "2026-11-02T06:16:15+00:00",
+  "actualizado": "2026-11-02T18:03:43+00:00",
   "productos_por_tienda": {
-    "Walmart": 16775,
-    "Masxmenos": 14220,
-    "Automercado": 11899
+    "Walmart": 16862,
+    "Masxmenos": 14265,
+    "Automercado": 12538
   },
   "cruzados_por_nombre": {
-    "Automercado": 1038
+    "Automercado": 1255
   },
-  "productos_en_comun": 13197,
+  "productos_en_comun": 13237,
   "categorias": [
     "Abarrotes",
     "Alimentos Congelados",
@@ -24,7 +24,5 @@
     "Mascota",
     "Panadería y tortillería"
   ],
-  "saltados": [
-    "[Automercado] abarrotes: se saltó la categoría (Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"am-radio-filter\").first.locator(\"label\").nth(1)\n)"
-  ]
+  "saltados": []
 }
