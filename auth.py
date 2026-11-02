@@ -5,7 +5,9 @@ Los inicios de sesión fallidos se cuentan en la base por correo: tras varios
 seguidos, ese correo queda bloqueado un rato, aunque se recargue la página.
 """
 
+import hashlib
 import re
+import secrets
 
 import bcrypt
 
@@ -16,6 +18,7 @@ CLAVE_MINIMA = 8
 CLAVE_MAXIMA_BYTES = 72
 NOMBRE_MAXIMO = 60
 CORREO_MAXIMO = 254
+DIAS_SESION = 30  # cuánto dura la sesión recordada en el navegador
 INTENTOS_PERMITIDOS = 5
 VENTANA_MINUTOS = 15
 _PATRON_CORREO = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -92,3 +95,29 @@ def iniciar_sesion(conexion, correo: str, clave: str) -> dict | None:
         return None
     db.limpiar_fallos(conexion, correo)
     return {k: usuario[k] for k in ("id", "correo", "nombre")}
+
+
+# --- Sesión recordada (cookie) ----------------------------------------------
+# El navegador guarda un token aleatorio de 256 bits; la base guarda solo su hash
+# SHA-256, así que una copia de la base no sirve para entrar como nadie.
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def recordar(conexion, usuario_id: int) -> str:
+    """Crea una sesión recordada y devuelve el token para la cookie."""
+    token = secrets.token_urlsafe(32)
+    db.crear_sesion(conexion, usuario_id, hash_token(token), DIAS_SESION)
+    return token
+
+
+def usuario_recordado(conexion, token: str | None) -> dict | None:
+    """El usuario de una cookie válida y vigente, o None."""
+    if not isinstance(token, str) or not token or len(token) > 100:
+        return None
+    return db.usuario_por_sesion(conexion, hash_token(token))
+
+
+def olvidar(conexion, token: str) -> None:
+    db.borrar_sesion(conexion, hash_token(token))

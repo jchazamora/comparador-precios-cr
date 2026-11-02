@@ -60,6 +60,15 @@ create table if not exists usuarios (
     creado timestamptz not null default now()
 );
 
+-- Sesiones recordadas en el navegador (cookie). Se guarda el hash del token, nunca el token.
+create table if not exists sesiones (
+    token_hash text primary key,
+    usuario_id integer not null references usuarios on delete cascade,
+    creada timestamptz not null default now(),
+    expira timestamptz not null
+);
+create index if not exists sesiones_expira on sesiones (expira);
+
 -- Inicios de sesión fallidos por correo (exista o no la cuenta), para frenar intentos repetidos.
 create table if not exists intentos_fallidos (
     correo text not null,
@@ -248,6 +257,26 @@ def borrar_usuario(conexion, usuario_id: int) -> None:
     fila = conexion.execute("delete from usuarios where id = %s returning correo", (usuario_id,)).fetchone()
     if fila:
         conexion.execute("delete from intentos_fallidos where correo = %s", (fila["correo"],))
+
+
+def crear_sesion(conexion, usuario_id: int, token_hash: str, dias: int) -> None:
+    # Las vencidas ya no sirven: se limpian de paso.
+    conexion.execute("delete from sesiones where expira < now()")
+    conexion.execute(
+        "insert into sesiones (token_hash, usuario_id, expira) values (%s, %s, now() + make_interval(days => %s))",
+        (token_hash, usuario_id, dias),
+    )
+
+
+def usuario_por_sesion(conexion, token_hash: str) -> dict | None:
+    return conexion.execute("""
+        select u.id, u.correo, u.nombre from sesiones s join usuarios u on u.id = s.usuario_id
+        where s.token_hash = %s and s.expira > now()
+    """, (token_hash,)).fetchone()
+
+
+def borrar_sesion(conexion, token_hash: str) -> None:
+    conexion.execute("delete from sesiones where token_hash = %s", (token_hash,))
 
 
 def fallos_recientes(conexion, correo: str, minutos: int) -> int:

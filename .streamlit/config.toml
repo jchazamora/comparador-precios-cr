@@ -15,7 +15,7 @@ headingFontWeights = [800, 800, 700, 700, 600, 600]
 baseRadius = "0.8rem"
 buttonRadius = "0.8rem"
 showWidgetBorder = true
-chartCategoricalColors = ["#2a78d6", "#f15a25", "#1baf7a", "#e8a317"]
+chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a"]
 
 [theme.light]
 primaryColor = "#8b3dff"
@@ -38,7 +38,7 @@ secondaryBackgroundColor = "#1d1b35"
 textColor = "#eeedf9"
 borderColor = "#2b2946"
 dataframeBorderColor = "#2b2946"
-chartCategoricalColors = ["#3987e5", "#bd3311", "#199e70", "#c17f11"]
+chartCategoricalColors = ["#3987e5", "#d95926", "#199e70"]
 
 [theme.dark.sidebar]
 backgroundColor = "#131224"

@@ -19,3 +19,4 @@ data_log.txt
 
 .env
 .streamlit/secrets.toml
+*.log

@@ -16,8 +16,8 @@ Reglas:
 
 # Colores de identidad de cada tienda (paleta categórica validada con todos los pares, en ese orden).
 TIENDAS = {
-    "light": {"Walmart": "#2a78d6", "Masxmenos": "#f15a25", "Automercado": "#1baf7a", "Pequeño Mundo": "#e8a317"},
-    "dark": {"Walmart": "#3987e5", "Masxmenos": "#bd3311", "Automercado": "#199e70", "Pequeño Mundo": "#c17f11"},
+    "light": {"Walmart": "#2a78d6", "Masxmenos": "#eb6834", "Automercado": "#1baf7a"},
+    "dark": {"Walmart": "#3987e5", "Masxmenos": "#d95926", "Automercado": "#199e70"},
 }
 
 TEMAS = {

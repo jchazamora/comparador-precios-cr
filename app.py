@@ -46,6 +46,10 @@ else:
     _avisar_sin_base()
     navegacion = st.navigation([p["comparador"]])
 
+# La sesión guardada en la cookie (si hay) y la cookie por escribir o borrar tras iniciar o cerrar sesión.
+sesion.restaurar()
+sesion.escribir_cookie()
+
 with st.sidebar:
     usuario = sesion.usuario()
     if usuario:

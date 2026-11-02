@@ -139,7 +139,8 @@ def mostrar() -> None:
 
     if modo == MODO_CATALOGO:
         df, meta = datos.cargar_catalogo()
-        por_tienda = meta.get("productos_por_tienda", {})
+        # Solo las tiendas actuales (un meta.json viejo puede traer otras).
+        por_tienda = {t: n for t, n in meta.get("productos_por_tienda", {}).items() if t in datos.TIENDAS}
         estilo.portada(
             "¿Dónde sale más barato el súper?",
             f"Comparamos {len(df):,} productos de {len(datos.tiendas_en(df))} supermercados de Costa Rica "

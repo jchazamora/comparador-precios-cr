@@ -1,5 +1,11 @@
 # Auditoría de colorimetría
 
+> **Actualización (01/11/2026).** Pequeño Mundo se quitó del comparador porque aportaba muy pocas comparaciones.
+> Con tres tiendas, Masxmenos vuelve a su naranja documentado (`#eb6834` en claro, `#d95926` en oscuro). El
+> cambio de tono de abajo solo hacía falta para separarlo del ámbar de Pequeño Mundo. El validador del skill pasa
+> con las tres tiendas comparando todos los pares (peor par con daltonismo: ΔE 9.2 en claro y 9.4 en oscuro; con
+> visión normal: 24.0 y 20.9). Las tablas siguientes son de la auditoría original, con cuatro tiendas.
+
 Revisión de todos los colores de la app (31/10/2026). Se midió:
 - el contraste de cada texto con su fondo;
 - si los elementos gráficos se distinguen del fondo;

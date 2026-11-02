@@ -95,6 +95,8 @@ def mostrar() -> None:
         with izquierda:
             ean = _elegir_producto(conexion, usuario)
             puntos = pd.DataFrame(db.historial(conexion, ean)) if ean else pd.DataFrame()
+            if not puntos.empty:  # solo tiendas actuales (el historial guarda también las que ya no se comparan)
+                puntos = puntos[puntos["tienda"].isin(datos.TIENDAS)]
         with derecha:
             estilo.seccion("Los que más cambiaron")
             cambios = _mas_cambiaron(corridas[-1]["id"])

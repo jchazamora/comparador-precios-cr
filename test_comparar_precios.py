@@ -417,5 +417,11 @@ class TestPedirPagina(unittest.TestCase):
         )
 
 
+class TestClave(unittest.TestCase):
+    def test_columnas_sin_tildes_ni_espacios(self):
+        self.assertEqual(cp.clave("Walmart"), "walmart")
+        self.assertEqual(cp.clave("Más x Menos"), "mas_x_menos")
+
+
 if __name__ == "__main__":
     unittest.main()

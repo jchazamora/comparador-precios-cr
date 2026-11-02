@@ -11,7 +11,7 @@ import streamlit as st
 
 import comparar_precios as cp
 
-TIENDAS = ["Walmart", "Masxmenos", "Automercado", "Pequeño Mundo"]
+TIENDAS = ["Walmart", "Masxmenos", "Automercado"]
 # Costa Rica no cambia de hora en el año: UTC-6 fijo.
 HORA_CR = timezone(timedelta(hours=-6))
 

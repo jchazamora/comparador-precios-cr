@@ -2,13 +2,12 @@
 
 La app de Streamlit lee el resultado de data/, así que no tiene que consultar
 miles de páginas en cada visita. Tarda unos minutos. Automercado se lee con un
-navegador automático (ver automercado.py) y Pequeño Mundo, página por página
-(ver pequenomundo.py); los dos se cruzan por nombre. Si hay DATABASE_URL (ver
+navegador automático (ver automercado.py) y se cruza por nombre. Si hay DATABASE_URL (ver
 .env.example), cada corrida se guarda además en PostgreSQL para el historial.
 
 Uso:
     python actualizar_catalogo.py
-    python actualizar_catalogo.py --sin-automercado --sin-pequenomundo
+    python actualizar_catalogo.py --sin-automercado
 """
 
 import argparse
@@ -24,7 +23,6 @@ from pathlib import Path
 import automercado as am
 import db
 import comparar_precios as cp
-import pequenomundo as pm
 
 CARPETA = Path(__file__).parent / "data"
 ARCHIVO_COMPARACION = CARPETA / "comparacion.csv"
@@ -34,7 +32,7 @@ ARCHIVO_CACHE = Path(__file__).parent / "cache" / "descarga.pkl"
 
 
 # Tiendas sin EAN, que se cruzan por nombre con las tiendas VTEX.
-POR_NOMBRE = [am, pm]
+POR_NOMBRE = [am]
 
 saltados: list[str] = []
 
@@ -49,13 +47,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sin-automercado", action="store_true",
                         help="Sin Automercado (no necesita Playwright y tarda menos).")
-    parser.add_argument("--sin-pequenomundo", action="store_true", help="Sin Pequeño Mundo.")
     parser.add_argument("--sin-db", action="store_true", help="No guarda la corrida en PostgreSQL.")
     parser.add_argument("--usar-cache", action="store_true",
                         help="Reusa la última descarga (cache/) para recalcular la comparación sin bajar nada.")
     args = parser.parse_args()
 
-    excluidos = [m for m, fuera in [(am, args.sin_automercado), (pm, args.sin_pequenomundo)] if fuera]
+    excluidos = [am] if args.sin_automercado else []
     inicio = time.monotonic()
     if args.usar_cache:
         por_tienda = pickle.loads(ARCHIVO_CACHE.read_bytes())

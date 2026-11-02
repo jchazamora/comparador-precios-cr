@@ -222,6 +222,38 @@ class TestUsuarios(_ConBase):
         self.assertIsNotNone(auth.iniciar_sesion(self.conexion, "ana@correo.cr", "clave-segura"))
 
 
+class TestSesionRecordada(_ConBase):
+    def setUp(self):
+        super().setUp()
+        self.usuario = auth.registrar(self.conexion, "ana@correo.cr", "Ana", "clave-segura", "clave-segura")
+
+    def test_el_token_de_la_cookie_recupera_al_usuario(self):
+        token = auth.recordar(self.conexion, self.usuario["id"])
+        self.assertEqual(auth.usuario_recordado(self.conexion, token), self.usuario)
+
+    def test_la_base_guarda_el_hash_y_no_el_token(self):
+        token = auth.recordar(self.conexion, self.usuario["id"])
+        guardado = self.conexion.execute("select token_hash from sesiones").fetchone()["token_hash"]
+        self.assertNotEqual(guardado, token)
+        self.assertEqual(guardado, auth.hash_token(token))
+
+    def test_tokens_invalidos_vencidos_u_olvidados(self):
+        token = auth.recordar(self.conexion, self.usuario["id"])
+        self.assertIsNone(auth.usuario_recordado(self.conexion, "otro-token"))
+        self.assertIsNone(auth.usuario_recordado(self.conexion, None))
+        self.assertIsNone(auth.usuario_recordado(self.conexion, "x" * 500))
+        self.conexion.execute("update sesiones set expira = now() - interval '1 minute'")
+        self.assertIsNone(auth.usuario_recordado(self.conexion, token))
+        nuevo = auth.recordar(self.conexion, self.usuario["id"])  # de paso borra la vencida
+        auth.olvidar(self.conexion, nuevo)
+        self.assertEqual(self.conexion.execute("select count(*) as n from sesiones").fetchone()["n"], 0)
+
+    def test_eliminar_la_cuenta_cierra_sus_sesiones(self):
+        token = auth.recordar(self.conexion, self.usuario["id"])
+        db.borrar_usuario(self.conexion, self.usuario["id"])
+        self.assertIsNone(auth.usuario_recordado(self.conexion, token))
+
+
 class TestFavoritosYLista(_ConBase):
     def setUp(self):
         super().setUp()

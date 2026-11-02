@@ -240,30 +240,5 @@ class TestAppTresTiendas(_BaseApp):
         self.assertFalse(any("códigos de barras" in c.value for c in at.caption))
 
 
-@unittest.skipIf(st is None, "Streamlit no está instalado")
-class TestAppPequenoMundo(_BaseApp):
-    """El nombre con tilde y espacio de Pequeño Mundo no rompe las columnas."""
-
-    def setUp(self):
-        super().setUp()
-        por_tienda, _ = busqueda_falsa(None, None)
-        pm = producto("Pequeño Mundo", "2", 1200, "Frijol Toños 440g")
-        pm.cruce = "nombre"
-        por_tienda["Pequeño Mundo"] = [pm]
-        filas = cp.comparar(por_tienda)
-        with open(self.datos / "comparacion.csv", "w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=list(filas[0]))
-            writer.writeheader()
-            writer.writerows(filas)
-
-    def test_metricas_y_columnas(self):
-        at = self.correr()
-        metricas = {m.label: m.value for m in at.metric}
-        self.assertEqual(metricas["Pequeño Mundo más barato"], "1")
-        tabla = at.dataframe[0].value.set_index("ean")
-        self.assertEqual(tabla.loc["2", "precio_pequeno_mundo"], 1200)
-        self.assertEqual(tabla.loc["2", "cruce_por_nombre"], "Pequeño Mundo")
-
-
 if __name__ == "__main__":
     unittest.main()

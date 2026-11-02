@@ -14,6 +14,8 @@ def _iniciar_sesion() -> None:
                                autocomplete="email")
         clave = st.text_input("Contraseña", type="password", autocomplete="current-password")
         enviado = st.form_submit_button("Iniciar sesión", type="primary", width="stretch")
+    st.caption(f"Tu sesión queda abierta {auth.DIAS_SESION} días en este navegador. "
+               "En una computadora compartida, cierra sesión al terminar.")
     if not enviado:
         return
     try:

@@ -96,7 +96,7 @@ def css() -> str:
     [data-testid="stMetric"] {{ background: {c('superficie')}; border: 1px solid {c('borde')};
         border-radius: 18px; padding: 16px 18px; box-shadow: {sombra}; }}
     [data-testid="stMetricLabel"] p {{ color: {c('suave')}; font-weight: 500; }}
-    /* Etiquetas largas ("Pequeño Mundo más barato") en dos líneas en vez de cortadas con "…", sin partir palabras. */
+    /* Etiquetas largas ("Automercado más barato") en dos líneas en vez de cortadas con "…", sin partir palabras. */
     [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * {{
         white-space: normal !important; overflow: visible !important; text-overflow: clip !important;
         word-break: normal !important; overflow-wrap: normal !important; }}
