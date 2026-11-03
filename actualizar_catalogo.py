@@ -48,6 +48,9 @@ def main() -> None:
     parser.add_argument("--sin-automercado", action="store_true",
                         help="Sin Automercado (no necesita Playwright y tarda menos).")
     parser.add_argument("--sin-db", action="store_true", help="No guarda la corrida en PostgreSQL.")
+    parser.add_argument("--estricto", action="store_true",
+                        help="Sale con error, sin guardar nada, si alguna página o categoría se saltó "
+                             "(para la actualización automática: no pisar datos buenos con incompletos).")
     parser.add_argument("--usar-cache", action="store_true",
                         help="Reusa la última descarga (cache/) para recalcular la comparación sin bajar nada.")
     args = parser.parse_args()
@@ -80,6 +83,8 @@ def main() -> None:
         avisar(f"[{tienda}] {len(por_tienda[tienda])} de {descargados[tienda]} "
                "productos cruzados por marca, tamaño y nombre")
 
+    if args.estricto and saltados:
+        sys.exit(f"Descarga incompleta ({len(saltados)} aviso(s) de páginas saltadas); no se guarda nada.")
     filas = cp.comparar(por_tienda)
     if not filas:
         sys.exit("No hubo productos en común; no se sobrescribe el archivo anterior.")

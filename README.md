@@ -113,7 +113,7 @@ Las fechas se muestran en hora de Costa Rica (UTC-6), aunque el servidor de Stre
 
 [`.github/workflows/actualizar-precios.yml`](.github/workflows/actualizar-precios.yml) ejecuta `actualizar_catalogo.py` todos los días a las 02:00 (hora de Costa Rica) en GitHub Actions, guarda la corrida en PostgreSQL y sube `data/comparacion.csv` y `data/meta.json`; Streamlit Cloud se redespliega solo con ese commit. También se puede lanzar a mano desde la pestaña **Actions → Actualizar precios → Run workflow**.
 
-Requiere un secret del repositorio llamado `DATABASE_URL` (Settings → Secrets and variables → Actions) con la misma URL de Neon que usa la app. Si una descarga falla, el workflow termina en error y no toca `data/`.
+Requiere un secret del repositorio llamado `DATABASE_URL` (Settings → Secrets and variables → Actions) con la misma URL de Neon que usa la app. Corre con `--estricto`: si alguna página o categoría se salta incluso tras reintentarla, el workflow termina en error y no toca `data/` ni la base, para no reemplazar datos buenos por incompletos.
 
 ## Tests
 

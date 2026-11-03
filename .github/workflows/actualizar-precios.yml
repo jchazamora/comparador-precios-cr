@@ -37,7 +37,7 @@ jobs:
       - name: Descargar precios y guardar la corrida
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python actualizar_catalogo.py
+        run: python actualizar_catalogo.py --estricto
 
       - name: Subir data/ si cambió
         run: |

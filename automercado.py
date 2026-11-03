@@ -87,10 +87,18 @@ def descargar_catalogo(categorias=CATEGORIAS, avisar=lambda _: None) -> list[cp.
         pagina.locator('a[href^="/categorias/"]').first.wait_for(state="attached", timeout=30000)
         pagina.wait_for_timeout(3000)
         for slug in categorias:
-            try:
-                nuevos = _descargar_categoria(pagina, slug)
-            except Exception as e:  # una categoría fallida no debe tirar toda la descarga
-                avisar(f"[{TIENDA}] {slug}: se saltó la categoría ({e})")
+            nuevos = None
+            for intento in range(3):  # el sitio falla a ratos (clics que no responden): se reintenta la categoría entera
+                try:
+                    nuevos = _descargar_categoria(pagina, slug)
+                    break
+                except Exception as e:  # una categoría fallida no debe tirar toda la descarga
+                    if intento == 2:
+                        avisar(f"[{TIENDA}] {slug}: se saltó la categoría ({e})")
+                    else:
+                        avisar(f"[{TIENDA}] {slug}: falló, se reintenta ({str(e).splitlines()[0]})")
+                        pagina.wait_for_timeout(5000)
+            if nuevos is None:
                 continue
             nuevos = [n for n in nuevos if n.url not in vistos]
             vistos.update(n.url for n in nuevos)
