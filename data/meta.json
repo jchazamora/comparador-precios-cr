@@ -1,14 +1,14 @@
 {
-  "actualizado": "2026-11-09T18:07:34+00:00",
+  "actualizado": "2026-11-10T16:06:08+00:00",
   "productos_por_tienda": {
-    "Walmart": 16755,
-    "Masxmenos": 14260,
+    "Walmart": 16863,
+    "Masxmenos": 14244,
     "Automercado": 0
   },
   "cruzados_por_nombre": {
     "Automercado": 0
   },
-  "productos_en_comun": 12989,
+  "productos_en_comun": 13059,
   "categorias": [
     "Abarrotes",
     "Alimentos Congelados",
